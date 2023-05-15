@@ -72,13 +72,14 @@ class Two4TwoDataset(torch.utils.data.Dataset):
 
 
 class Two4TwoDataModule(L.LightningDataModule):
-    def __init__(self, data_dir: str = "./"):
+    def __init__(self, data_dir: str = "./", working_path: str = None):
         super().__init__()
         self.two2two__predict = None
         self.two2two_val = None
         self.two2two_test = None
         self.two2two_train = None
         self.data_dir = data_dir
+        self.working_path = working_path
         self.transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
 
     def prepare_data(self):
@@ -88,9 +89,12 @@ class Two4TwoDataModule(L.LightningDataModule):
             return
         elif tarfile.is_tarfile(file):
             tar = tarfile.open(self.data_dir, "r")
-            # remove file ending from data_dir
-            self.data_dir =os.path.splitext(self.data_dir)[0]
-            tar.extractall(path=self.data_dir)
+            if self.working_path is None:
+                # remove file ending from data_dir
+                self.data_dir =os.path.splitext(self.data_dir)[0]
+                tar.extractall(path=self.data_dir)
+            else:
+                tar.extractall(path=self.working_path)
             tar.close()
         else:
             raise ValueError("Data directory is not a tarfile or directory")
