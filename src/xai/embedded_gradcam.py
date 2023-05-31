@@ -16,6 +16,12 @@ import pickle
 gradients = None
 activations = None
 
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    print("Using GPU")
+else:
+    device = torch.device("cpu")
+    print("Using CPU")
 
 def backward_hook(module, grad_input, grad_output):
     global gradients  # refers to the variable in the global scope
@@ -44,6 +50,7 @@ def GradCAM(model, img_batch, plot=True, img_path=None):  # NOSONAR
     else:
         img_tensor = img_batch
 
+    img_tensor.to(device)
     heatmap, pooled_gradients, embeddings = _generate_gradcam_heatmap(img_tensor, model)
 
     if plot:
@@ -85,7 +92,7 @@ def _generate_gradcam_heatmap(img_tensor, model):
     f_hook = model._pre_vq_conv.register_forward_hook(forward_hook)
     b_hook = model._pre_vq_conv.register_full_backward_hook(backward_hook)
 
-    loss, reconstructed, perplexity, embeddings = model(img_tensor)  # [0].backward()
+    loss, reconstructed, perplexity, embeddings = model(img_tensor.to(device))  # [0].backward()
     loss.backward()
     # pool the gradients across the channels
     pooled_gradients = torch.mean(gradients[0], dim=[0, 2, 3])
@@ -135,7 +142,7 @@ def collect_embeddings_and_gradients(model, data_loader, pickle_path):
 
 
 def _pickle_array(embed_array, grad_array, pickle_path):
-    with open(pickle_path, 'wb') as f:
+    with open(pickle_path, 'ab') as f:
         pickle.dump((embed_array, grad_array), f)
 
     # reset arrays to save memory
@@ -158,13 +165,7 @@ def _combine_arrays(embed_array, embeddings, grad_array, pooled_gradients):
 
 
 def build_database(data_path, work_path, model_path):
-    global device
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        print("Using GPU")
-    else:
-        device = torch.device("cpu")
-        print("Using CPU")
+
     pck_path = path.join(work_path, "grad_array.pkl")
     data_module = Two4TwoDataModule(data_dir=data_path, working_path=work_path)
     model = VQVAE.load_from_checkpoint(model_path, map_location=device)
