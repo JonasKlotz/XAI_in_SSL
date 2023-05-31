@@ -6,6 +6,7 @@ from matplotlib import colormaps, pyplot as plt
 from torchvision import transforms
 from torchvision.transforms.functional import to_pil_image
 from tqdm import tqdm
+from datasets.datautils import extract_data_loader
 
 from datasets.two4two import Two4TwoDataModule
 from models.VQVAE import VQVAE
@@ -22,6 +23,7 @@ if torch.cuda.is_available():
 else:
     device = torch.device("cpu")
     print("Using CPU")
+
 
 def backward_hook(module, grad_input, grad_output):
     global gradients  # refers to the variable in the global scope
@@ -117,8 +119,7 @@ def _generate_gradcam_heatmap(img_tensor, model):
 
 def collect_embeddings_and_gradients(model, data_loader, pickle_path):
     # Encode all images in the data_loader using model, and return both images and encodings
-    grad_array = None
-    embed_array = None
+    grad_dict = {}
     model.eval()  # not nograd
     i = 0
     for imgs, _ in tqdm(data_loader, desc="Encoding images", leave=False):
@@ -131,14 +132,13 @@ def collect_embeddings_and_gradients(model, data_loader, pickle_path):
         pooled_gradients = pooled_gradients.astype(np.float16)
         embeddings = embeddings.astype(np.float16)
         # add pooled_gradients and embeddings to array
-        embed_array, grad_array = _combine_arrays(embed_array, embeddings, grad_array, pooled_gradients)
-
+        # embed_array, grad_array = _combine_arrays(embed_array, embeddings, grad_array, pooled_gradients)
+        grad_dict[embeddings.tobytes()] = pooled_gradients
         i += 1
-        if i % 10 == 0:
-            # add to pickle file
-            embed_array, grad_array = _pickle_array(embed_array, grad_array, pickle_path)
-    # save the final arrays
-    _pickle_array(embed_array, grad_array, pickle_path)
+        if i % 200 == 0:
+            grad_dict = _dump_dictionary(grad_dict, pickle_path)
+
+    _dump_dictionary(grad_dict, pickle_path)
 
 
 def _pickle_array(embed_array, grad_array, pickle_path):
@@ -152,28 +152,34 @@ def _pickle_array(embed_array, grad_array, pickle_path):
     return embed_array, grad_array
 
 
-def _combine_arrays(embed_array, embeddings, grad_array, pooled_gradients):
-    if grad_array is None:
-        grad_array = pooled_gradients
+def _dump_dictionary(grad_dict, pickle_path):
+    """Dumps a dictionary to a pickle file"""
+    # if file exists, append to it
+    if path.exists(pickle_path):
+        with open(pickle_path, 'ab') as f:
+            pickle.dump(grad_dict, f)
     else:
-        grad_array = np.concatenate((grad_array, pooled_gradients), axis=0)
-    if embed_array is None:
-        embed_array = embeddings
-    else:
-        embed_array = np.concatenate((embed_array, embeddings), axis=0)
-    return embed_array, grad_array
+        with open(pickle_path, 'wb') as f:
+            pickle.dump(grad_dict, f)
+    del grad_dict
+    return {}
 
 
 def build_database(data_path, work_path, model_path):
-
+    """
+    Builds a database of embeddings and gradients for all images in the data_path's training loader
+    :param data_path:
+    :param work_path:
+    :param model_path:
+    :return:
+    """
     pck_path = path.join(work_path, "grad_array.pkl")
     data_module = Two4TwoDataModule(data_dir=data_path, working_path=work_path)
     model = VQVAE.load_from_checkpoint(model_path, map_location=device)
     # img_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/test.png"
     # GradCAM(model, img_path)
-    data_module.prepare_data()
-    data_module.setup("fit")
-    data_loader = data_module.train_dataloader()
+
+    data_loader = extract_data_loader(data_module, "fit")
     collect_embeddings_and_gradients(model, data_loader, pck_path)
     #  array is saved in a format of [embedding, gradient]
     print("done")
