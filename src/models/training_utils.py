@@ -135,7 +135,6 @@ def train_vqvae_datamodule(working_path, datamodule, max_epochs=50, learning_rat
         model: Trained VQ-VAE model
         result: Dictionary containing test and validation metrics
     """
-    # We use the hyperparameters from the author's code:
 
     # Create a PyTorch Lightning trainer with the generation callback
     trainer = L.Trainer(

@@ -22,7 +22,7 @@ def find_similar_images(query_img, query_z, key_embeds, K=8):
 
 
 def embed_imgs(model, data_loader):
-    # Encode all images in the data_laoder using model, and return both images and encodings
+    # Encode all images in the data_loader using model, and return both images and encodings
     img_list, embed_list = [], []
     model.eval()
     i = 0
@@ -47,6 +47,12 @@ def plot_similar_images(model, train_loader, test_loader):
 
 
 def plot_umap(model):
+    """ Plots the UMAP projection of the embedding space of the VQ-VAE.
+
+    Args:
+        model: Trained VQ-VAE model
+
+        """
     proj = umap.UMAP(n_neighbors=3,
                      min_dist=0.1,
                      metric='cosine').fit_transform(model._vq_vae._embedding.weight.data.cpu())

@@ -72,7 +72,7 @@ class Two4TwoDataset(torch.utils.data.Dataset):
 
 
 class Two4TwoDataModule(L.LightningDataModule):
-    def __init__(self, data_dir: str = "./", working_path: str = None):
+    def __init__(self, data_dir: str = "./", working_path: str = None, batch_size: int = 32):
         super().__init__()
         self.two2two__predict = None
         self.two2two_val = None
@@ -80,6 +80,8 @@ class Two4TwoDataModule(L.LightningDataModule):
         self.two2two_train = None
         self.data_dir = data_dir
         self.working_path = working_path
+        self.batch_size = batch_size
+        self.num_workers = 0
         self.transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
 
     def prepare_data(self):
@@ -114,16 +116,16 @@ class Two4TwoDataModule(L.LightningDataModule):
             self.two2two__predict = Two4TwoDataset(self.data_dir, mode='test', transform=self.transform)
 
     def train_dataloader(self):
-        return DataLoader(self.two2two_train, batch_size=32)
+        return DataLoader(self.two2two_train, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def val_dataloader(self):
-        return DataLoader(self.two2two_val, batch_size=32)
+        return DataLoader(self.two2two_val, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def test_dataloader(self):
-        return DataLoader(self.two2two_test, batch_size=32)
+        return DataLoader(self.two2two_test, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def predict_dataloader(self):
-        return DataLoader(self.two2two_test, batch_size=32)
+        return DataLoader(self.two2two_test, batch_size=self.batch_size, num_workers=self.num_workers)
 
 
 if __name__ == '__main__':

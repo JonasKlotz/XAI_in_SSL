@@ -251,7 +251,7 @@ class VQVAE(L.LightningModule):
         loss, quantized, perplexity = self.encode_and_quantize(x)
         x_recon = self._decoder(quantized)
 
-        return loss, x_recon, perplexity
+        return loss, x_recon, perplexity, quantized
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=1e-3)
@@ -262,7 +262,7 @@ class VQVAE(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         data, _ = batch  # We do not need the labels
-        vq_loss, data_recon, perplexity = self.forward(data)
+        vq_loss, data_recon, perplexity, embeddings = self.forward(data)
         recon_error = F.mse_loss(data_recon, data) / self.hparams.data_variance
         loss = recon_error + vq_loss
 
@@ -271,7 +271,7 @@ class VQVAE(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         data, _ = batch  # We do not need the labels
-        vq_loss, data_recon, perplexity = self.forward(data)
+        vq_loss, data_recon, perplexity, embeddings = self.forward(data)
         recon_error = F.mse_loss(data_recon, data) / self.hparams.data_variance
         loss = recon_error + vq_loss
 
@@ -279,7 +279,7 @@ class VQVAE(L.LightningModule):
 
     def test_step(self, batch, batch_idx):
         data, _ = batch  # We do not need the labels
-        vq_loss, data_recon, perplexity = self.forward(data)
+        vq_loss, data_recon, perplexity, embeddings = self.forward(data)
         recon_error = F.mse_loss(data_recon, data) / self.hparams.data_variance
         loss = recon_error + vq_loss
 
