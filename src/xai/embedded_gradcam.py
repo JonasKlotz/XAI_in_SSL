@@ -12,6 +12,7 @@ from torchvision import transforms
 from torchvision.transforms.functional import to_pil_image
 from tqdm import tqdm
 from datasets.datautils import extract_data_loader
+#import plotly.express as px
 
 from datasets.two4two import Two4TwoDataModule
 from models.VQVAE import VQVAE
@@ -74,7 +75,7 @@ def _plot_grad_heatmap(heatmap, img_tensor):
     # Create a figure and plot the first image
     fig, ax = plt.subplots()
     ax.axis('off')  # removes the axis markers
-
+    ## todo plot with px
     # if image tensor is a batch, take the first image
     if len(img_tensor.shape) == 4:
         img_tensor = img_tensor[0]
@@ -104,6 +105,15 @@ def _generate_gradcam_heatmap(img_tensor, model):
     b_hook = model._pre_vq_conv.register_full_backward_hook(backward_hook)
 
     loss, reconstructed, perplexity, embeddings = model(img_tensor.to(device))  # [0].backward()
+
+
+    img_sum = torch.sum(img_tensor)
+    print(f"img_sum:  {img_sum}")
+    reconstructed_sum = torch.sum(reconstructed)
+    print(f"reconstructed_sum:  {reconstructed_sum}")
+    embeddings_sum = torch.sum(embeddings)
+    print(f"embeddings_sum:  {embeddings_sum}")
+
     loss.backward()
     # pool the gradients across the channels
     pooled_gradients = torch.mean(gradients[0], dim=[0, 2, 3])
@@ -141,28 +151,18 @@ def collect_embeddings_and_gradients(model, data_loader, pickle_path):
 
         # convert to float 16 to save memory
         pooled_gradients = pooled_gradients.astype(np.float16)
-        embeddings = embeddings.astype(np.float16)
+        #embeddings = embeddings.astype(np.float16)
+        print(f"SUM:  {np.sum(embeddings)}")
         # add pooled_gradients and embeddings to array
         # embed_array, grad_array = _combine_arrays(embed_array, embeddings, grad_array, pooled_gradients)
         grad_dict[embeddings.tobytes()] = pooled_gradients
         i += 1
         if i % 30 == 0:
             grad_dict = _dump_dictionary(grad_dict, pickle_path)
-        if i == 1000:
+        if i == 30:
             break
 
     _dump_dictionary(grad_dict, pickle_path)
-
-
-def _pickle_array(embed_array, grad_array, pickle_path):
-    with open(pickle_path, 'ab') as f:
-        pickle.dump((embed_array, grad_array), f)
-
-    # reset arrays to save memory
-    del grad_array, embed_array
-    grad_array = None
-    embed_array = None
-    return embed_array, grad_array
 
 
 def _dump_dictionary(grad_dict, pickle_path):
@@ -174,8 +174,15 @@ def _dump_dictionary(grad_dict, pickle_path):
     else:
         with open(pickle_path, 'wb') as f:
             pickle.dump(grad_dict, f)
-    del grad_dict
+    del grad_dict # free memory
     return {}
+
+
+
+def read_database(pickle_path):
+    """Reads a pickle file and returns the dictionary"""
+    with open(pickle_path, 'rb') as f:
+        return pickle.load(f)
 
 
 def build_database(data_path, work_path, model_path):
@@ -198,13 +205,21 @@ def build_database(data_path, work_path, model_path):
     print("done")
 
 
+
+
 if __name__ == '__main__':
     data_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two"
     work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
     model_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/VAE.ckpt"
 
-    #build_database(data_path, work_path, model_path)
+    build_database(data_path, work_path, model_path)
 
     img_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/test.png"
-    model = VQVAE.load_from_checkpoint(model_path, map_location=device)
-    GradCAM(model, img_batch=None, plot=True, img_path=img_path)
+    #model = VQVAE.load_from_checkpoint(model_path, map_location=device)
+    #GradCAM(model, img_batch=None, plot=True, img_path=img_path)
+
+    database_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/grad_array.pkl"
+    grad_dict = read_database(database_path)
+    print("done")
+
+

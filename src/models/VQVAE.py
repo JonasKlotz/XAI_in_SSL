@@ -242,16 +242,16 @@ class VQVAE(L.LightningModule):
                                 num_residual_hiddens)
 
     def encode_and_quantize(self, x):
-        z = self._encoder(x)
-        z = self._pre_vq_conv(z)
-        loss, quantized, perplexity, _ = self._vq_vae(z)
-        return loss, quantized, perplexity
+        embeddings = self._encoder(x)
+        embeddings = self._pre_vq_conv(embeddings)
+        loss, quantized, perplexity, _ = self._vq_vae(embeddings)
+        return loss, quantized, perplexity, embeddings
 
     def forward(self, x):
-        loss, quantized, perplexity = self.encode_and_quantize(x)
-        x_recon = self._decoder(quantized)
+        loss, quantized, perplexity, embeddings = self.encode_and_quantize(x)
+        reconstruction = self._decoder(quantized)
 
-        return loss, x_recon, perplexity, quantized
+        return loss, reconstruction, perplexity, embeddings
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=1e-3)
