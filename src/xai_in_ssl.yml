@@ -1,0 +1,21 @@
+name: XAI_in_SSL
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - torchvision
+  - scikit-learn
+  - pandas
+  - bokeh
+  - tqdm
+  - seaborn
+  - lightning
+  - scikit-image
+  - umap-learn
+  - tensorboard
+  - opencv
+  - captum
+  - jupyter
+  - memory_profiler
+prefix: /home/jonasklotz/Environment/miniconda3/envs/XAI_in_SSL

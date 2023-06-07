@@ -101,7 +101,6 @@ class Two4TwoDataModule(L.LightningDataModule):
         else:
             raise ValueError("Data directory is not a tarfile or directory")
 
-
     def setup(self, stage: str):
         # Assign train/val datasets for use in dataloaders
         if stage == "fit":

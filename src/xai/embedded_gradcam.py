@@ -1,3 +1,8 @@
+import sys
+
+print(sys.path)
+sys.path.append("/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/src")
+
 import PIL
 import numpy as np
 import torch.nn.functional as F
@@ -13,6 +18,7 @@ from models.VQVAE import VQVAE
 import torch
 from os import path
 import pickle
+from memory_profiler import profile
 
 gradients = None
 activations = None
@@ -52,7 +58,6 @@ def GradCAM(model, img_batch, plot=True, img_path=None):  # NOSONAR
     else:
         img_tensor = img_batch
 
-    img_tensor.to(device)
     heatmap, pooled_gradients, embeddings = _generate_gradcam_heatmap(img_tensor, model)
 
     if plot:
@@ -69,6 +74,11 @@ def _plot_grad_heatmap(heatmap, img_tensor):
     # Create a figure and plot the first image
     fig, ax = plt.subplots()
     ax.axis('off')  # removes the axis markers
+
+    # if image tensor is a batch, take the first image
+    if len(img_tensor.shape) == 4:
+        img_tensor = img_tensor[0]
+
     # First plot the original image
     ax.imshow(to_pil_image(img_tensor, mode='RGB'))
     # Resize the heatmap to the same size as the input image and defines
@@ -84,7 +94,6 @@ def _plot_grad_heatmap(heatmap, img_tensor):
     ax.imshow(overlay, alpha=0.4, interpolation='nearest', extent='extent')
     # Show the plot
     plt.show()
-
 
 def _generate_gradcam_heatmap(img_tensor, model):
     # defines two global scope variables to store our gradients and activations
@@ -117,6 +126,8 @@ def _generate_gradcam_heatmap(img_tensor, model):
     return heatmap, pooled_gradients, embeddings
 
 
+
+
 def collect_embeddings_and_gradients(model, data_loader, pickle_path):
     # Encode all images in the data_loader using model, and return both images and encodings
     grad_dict = {}
@@ -135,8 +146,10 @@ def collect_embeddings_and_gradients(model, data_loader, pickle_path):
         # embed_array, grad_array = _combine_arrays(embed_array, embeddings, grad_array, pooled_gradients)
         grad_dict[embeddings.tobytes()] = pooled_gradients
         i += 1
-        if i % 200 == 0:
+        if i % 30 == 0:
             grad_dict = _dump_dictionary(grad_dict, pickle_path)
+        if i == 1000:
+            break
 
     _dump_dictionary(grad_dict, pickle_path)
 
@@ -190,4 +203,8 @@ if __name__ == '__main__':
     work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
     model_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/VAE.ckpt"
 
-    build_database(data_path, work_path, model_path)
+    #build_database(data_path, work_path, model_path)
+
+    img_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/test.png"
+    model = VQVAE.load_from_checkpoint(model_path, map_location=device)
+    GradCAM(model, img_batch=None, plot=True, img_path=img_path)
