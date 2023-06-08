@@ -106,14 +106,6 @@ def _generate_gradcam_heatmap(img_tensor, model):
 
     loss, reconstructed, perplexity, embeddings = model(img_tensor.to(device))  # [0].backward()
 
-
-    img_sum = torch.sum(img_tensor)
-    print(f"img_sum:  {img_sum}")
-    reconstructed_sum = torch.sum(reconstructed)
-    print(f"reconstructed_sum:  {reconstructed_sum}")
-    embeddings_sum = torch.sum(embeddings)
-    print(f"embeddings_sum:  {embeddings_sum}")
-
     loss.backward()
     # pool the gradients across the channels
     pooled_gradients = torch.mean(gradients[0], dim=[0, 2, 3])
@@ -152,7 +144,6 @@ def collect_embeddings_and_gradients(model, data_loader, pickle_path):
         # convert to float 16 to save memory
         pooled_gradients = pooled_gradients.astype(np.float16)
         #embeddings = embeddings.astype(np.float16)
-        print(f"SUM:  {np.sum(embeddings)}")
         # add pooled_gradients and embeddings to array
         # embed_array, grad_array = _combine_arrays(embed_array, embeddings, grad_array, pooled_gradients)
         grad_dict[embeddings.tobytes()] = pooled_gradients
