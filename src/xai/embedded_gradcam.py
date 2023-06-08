@@ -130,12 +130,12 @@ def _generate_gradcam_heatmap(img_tensor, model):
 
 
 
-def collect_embeddings_and_gradients(model, data_loader, pickle_path):
+def collect_embeddings_and_gradients(model, data_loader, pickle_path, end=1000):
     # Encode all images in the data_loader using model, and return both images and encodings
     grad_dict = {}
     model.eval()  # not nograd
     i = 0
-    for imgs, _ in tqdm(data_loader, desc="Encoding images", leave=False):
+    for imgs, _ in tqdm(data_loader[:end], desc="Encoding images", leave=False):
         pooled_gradients, embeddings = GradCAM(model, imgs, plot=False)
         # convert to numpy array
         pooled_gradients = pooled_gradients.detach().cpu().numpy()
@@ -150,8 +150,7 @@ def collect_embeddings_and_gradients(model, data_loader, pickle_path):
         i += 1
         if i % 30 == 0:
             grad_dict = _dump_dictionary(grad_dict, pickle_path)
-        if i == 30:
-            break
+
 
     _dump_dictionary(grad_dict, pickle_path)
 
