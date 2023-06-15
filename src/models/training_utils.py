@@ -162,6 +162,33 @@ def train_with_datamodule(working_path, datamodule, model, max_epochs=50, model_
     return model, result
 
 
+def load_vqvae():
+    from pl_bolts.models.autoencoders import VAE
+    vae_weight_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/vae/vae_cifar10/checkpoints/epoch%3D99.ckpt'
+    vae = VAE.load_from_checkpoint(vae_weight_path, strict=False)
+    vae = vae.to('cuda')
+    vae.eval()
+    return vae
+
+
+def load_simclr():
+    from pl_bolts.models.self_supervised import SimCLR
+    simclr_weight_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_simclr_imagenet/simclr_imagenet.ckpt'
+    simclr = SimCLR.load_from_checkpoint(simclr_weight_path, strict=False)
+    simclr = simclr.to('cuda')
+    simclr.eval()
+    return simclr
+
+
+def load_swav():
+    from pl_bolts.models.self_supervised.swav.swav_module import SwAV
+    swav_weight_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/swav/swav_imagenet/swav_imagenet.pth.tar'
+    swav = SwAV.load_from_checkpoint(swav_weight_path, strict=False)
+    swav = swav.to('cuda')
+    swav.eval()
+    return swav
+
+
 if __name__ == '__main__':
     from datasets.two4two import Two4TwoDataModule
 
@@ -172,9 +199,9 @@ if __name__ == '__main__':
     from datasets.mnist import MNISTDataModule
 
     datamodule = MNISTDataModule(datapath)
-
+    embedding_dim = 4
     model = VQVAE(num_hiddens, num_residual_layers, num_residual_hiddens,
                   num_embeddings, embedding_dim,
                   commitment_cost, decay, input_channels=1)
 
-    train_with_datamodule(working_path=working_path, datamodule=datamodule,model=model, max_epochs=1)
+    train_with_datamodule(working_path=working_path, datamodule=datamodule, model=model, max_epochs=1)

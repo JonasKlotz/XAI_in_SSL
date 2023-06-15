@@ -245,11 +245,12 @@ class VQVAE(L.LightningModule):
     def encode_and_quantize(self, x):
         embeddings = self._encoder(x)
         embeddings = self._pre_vq_conv(embeddings)
-        loss, quantized, perplexity, _ = self._vq_vae(embeddings)
+        loss, quantized, perplexity, encodings = self._vq_vae(embeddings)
         return loss, quantized, perplexity, embeddings
 
     def forward(self, x):
         loss, quantized, perplexity, embeddings = self.encode_and_quantize(x)
+
         reconstruction = self._decoder(quantized)
 
         return loss, reconstruction, perplexity, embeddings
