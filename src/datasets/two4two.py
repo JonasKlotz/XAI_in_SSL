@@ -1,26 +1,15 @@
-import json
-import optparse
 import os
-import time
+import os
 import tarfile
-
-
-
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-from skimage import io
-import torch
-from torchvision import models, transforms
-import lightning as L
-
-from torch.utils.data import random_split, DataLoader
-
-# Note - you must have torchvision installed for this example
-from torchvision import transforms
+from pathlib import Path
 
 import cv2
-from pathlib import Path
+import lightning as L
+import pandas as pd
+import torch
+from torch.utils.data import random_split, DataLoader
+# Note - you must have torchvision installed for this example
+from torchvision import transforms
 
 
 class Two4TwoDataset(torch.utils.data.Dataset):

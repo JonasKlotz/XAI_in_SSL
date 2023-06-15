@@ -8,6 +8,14 @@ import torchvision
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 
 from models.VQVAE import VQVAE
+from models.bolts import load_simclr
+
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    print("Using GPU")
+else:
+    device = torch.device("cpu")
+    print("Using CPU")
 
 
 def load_image_from_datamodule(datamodule, index=None):
@@ -162,31 +170,6 @@ def train_with_datamodule(working_path, datamodule, model, max_epochs=50, model_
     return model, result
 
 
-def load_vqvae():
-    from pl_bolts.models.autoencoders import VAE
-    vae_weight_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/vae/vae_cifar10/checkpoints/epoch%3D99.ckpt'
-    vae = VAE.load_from_checkpoint(vae_weight_path, strict=False)
-    vae = vae.to('cuda')
-    vae.eval()
-    return vae
-
-
-def load_simclr():
-    from pl_bolts.models.self_supervised import SimCLR
-    simclr_weight_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_simclr_imagenet/simclr_imagenet.ckpt'
-    simclr = SimCLR.load_from_checkpoint(simclr_weight_path, strict=False)
-    simclr = simclr.to('cuda')
-    simclr.eval()
-    return simclr
-
-
-def load_swav():
-    from pl_bolts.models.self_supervised.swav.swav_module import SwAV
-    swav_weight_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/swav/swav_imagenet/swav_imagenet.pth.tar'
-    swav = SwAV.load_from_checkpoint(swav_weight_path, strict=False)
-    swav = swav.to('cuda')
-    swav.eval()
-    return swav
 
 
 if __name__ == '__main__':
@@ -203,5 +186,9 @@ if __name__ == '__main__':
     model = VQVAE(num_hiddens, num_residual_layers, num_residual_hiddens,
                   num_embeddings, embedding_dim,
                   commitment_cost, decay, input_channels=1)
+    #model = load_vqvae()
+    #model = load_simclr()
+    #model = load_swav()
 
     train_with_datamodule(working_path=working_path, datamodule=datamodule, model=model, max_epochs=1)
+    print(model)
