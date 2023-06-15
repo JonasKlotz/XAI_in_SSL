@@ -86,7 +86,7 @@ class BasicBlock(nn.Module):
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = norm_layer(planes)
-        self.relu1 = nn.ReLU(inplace=True)
+        self.relu1 = nn.ReLU(inplace=False)
         self.relu2 = nn.ReLU(inplace=True)
         self.conv2 = conv3x3(planes, planes)
         self.bn2 = norm_layer(planes)
@@ -143,9 +143,9 @@ class Bottleneck(nn.Module):
         self.bn2 = norm_layer(width)
         self.conv3 = conv1x1(width, planes * self.expansion)
         self.bn3 = norm_layer(planes * self.expansion)
-        self.relu1 = nn.ReLU(inplace=True)
-        self.relu2 = nn.ReLU(inplace=True)
-        self.relu3 = nn.ReLU(inplace=True)
+        self.relu1 = nn.ReLU(inplace=False)
+        self.relu2 = nn.ReLU(inplace=False)
+        self.relu3 = nn.ReLU(inplace=False)
         self.downsample = downsample
         self.stride = stride
 
@@ -206,7 +206,7 @@ class ResNet(nn.Module):
             3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False
         )
         self.bn1 = norm_layer(self.inplanes)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU(inplace=False)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(
@@ -484,3 +484,63 @@ def get_resnet(resnet_layers):
     else:
         raise ValueError("Resnet layers must be 18, 34, 50, 101, or 152")
     return model
+
+
+if __name__ == '__main__':
+    import random
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import torch
+    import torchvision
+    import quantus
+    from typing import Union
+
+
+    # Choose hardware acceleration if available
+    def choose_device() -> str:
+        if torch.cuda.is_available():
+            return "cuda:0"
+        if hasattr(torch.backends, "mps"):
+            if torch.backends.mps.is_available():
+                return "mps"
+        return "cpu"
+
+
+    device = torch.device(choose_device())
+
+    path_to_files = "/home/jonasklotz/Studys/MASTERS/XAI_PLAYGROUND/data/imagenet_batches"
+
+    # Load test data and make loaders.
+    x_batch = torch.load(f'{path_to_files}/x_batch.pt')
+    y_batch = torch.load(f'{path_to_files}/y_batch.pt')
+    s_batch = torch.load(f'{path_to_files}/s_batch.pt')
+    x_batch, s_batch, y_batch = x_batch.to(device), s_batch.to(device), y_batch.to(device)
+    print(f"{len(x_batch)} matches found.")
+
+
+    def normalize_image(arr: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
+        mean = np.array([0.485, 0.456, 0.406])
+        std = np.array([0.229, 0.224, 0.225])
+        if isinstance(arr, torch.Tensor):
+            arr_copy = arr.clone().cpu().numpy()
+        else:
+            arr_copy = arr.copy()
+
+        arr_copy = quantus.normalise_func.denormalise(arr_copy, mean=mean, std=std)
+        arr_copy = np.moveaxis(arr_copy, 0, -1)
+        arr_copy = (arr_copy * 255.).astype(np.uint8)
+        return arr_copy
+
+
+    # Plot some inputs!
+    nr_images = 5
+    fig, axes = plt.subplots(nrows=1, ncols=nr_images, figsize=(nr_images * 3, int(nr_images * 2 / 3)))
+    for i in range(nr_images):
+        axes[i].imshow(normalize_image(x_batch[i]), vmin=0.0, vmax=1.0, cmap="gray")
+        axes[i].title.set_text(f"ImageNet class - {y_batch[i].item()}")
+        axes[i].axis("off")
+    plt.show()
+
+    resnet = get_resnet(18)
+    # Generate Integrated Gradients attributions of the first batch of the test set.
+    a_batch = quantus.explain(resnet, x_batch, y_batch, method="IntegratedGradients", device=device)

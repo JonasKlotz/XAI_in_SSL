@@ -2,6 +2,9 @@ import sys
 
 print(sys.path)
 sys.path.append("/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/src")
+import plotly.io as pio
+
+#pio.renderers.default = 'png'
 
 import PIL
 import numpy as np
@@ -12,8 +15,8 @@ from torchvision import transforms
 from torchvision.transforms.functional import to_pil_image
 from tqdm import tqdm
 from datasets.datautils import extract_data_loader
-# import plotly.express as px
-
+import plotly.express as px
+import zarr
 from datasets.two4two import Two4TwoDataModule
 from models.VQVAE import VQVAE
 import torch
@@ -62,39 +65,41 @@ def GradCAM(model, img_batch, plot=True, img_path=None):  # NOSONAR
     heatmap, pooled_gradients, embeddings = _generate_gradcam_heatmap(img_tensor, model)
 
     if plot:
-        _plot_grad_heatmap(heatmap, img_tensor)
+        _plot_grad_heatmap(heatmap)
+        _plot_grad_heatmap_and_img(heatmap, img_tensor)
 
     return pooled_gradients, embeddings
 
+def _plot_grad_heatmap_and_img(heatmap, img_tensor):
+    heatmap = heatmap.detach().numpy()
+    img = img_tensor.squeeze(0).permute(1, 2, 0).detach().numpy()
+    # normalize the tensor
+    img = img - np.min(img)
+    img = img / np.max(img)
+    fig = px.imshow(img)
+    fig.show()
+    #
+    # # normalize the heatmap
+    # heatmap = heatmap - np.min(heatmap)
+    # heatmap = heatmap / np.max(heatmap)
+    #
+    #
+    # # todo make work
+    # from plotly.subplots import make_subplots
+    # import plotly.graph_objects as go
+    # fig = make_subplots(rows=1, cols=2,
+    #                     horizontal_spacing=0.01,
+    #                     shared_yaxes=True)
+    #
+    # fig.add_trace(go.Image(z=img), row=1, col=1)
+    # fig.add_trace(go.Image(z=heatmap), row=1, col=2)
+    # fig.show()
 
-def _plot_grad_heatmap(heatmap, img_tensor):
-    # draw the heatmap
-    plt.matshow(heatmap.detach())
-    # Show the plot
-    plt.show()
-    # Create a figure and plot the first image
-    fig, ax = plt.subplots()
-    ax.axis('off')  # removes the axis markers
-    ## todo plot with px
-    # if image tensor is a batch, take the first image
-    if len(img_tensor.shape) == 4:
-        img_tensor = img_tensor[0]
+def _plot_grad_heatmap(heatmap):
+    data = heatmap.detach()
+    fig = px.imshow(data)
+    fig.show()
 
-    # First plot the original image
-    ax.imshow(to_pil_image(img_tensor, mode='RGB'))
-    # Resize the heatmap to the same size as the input image and defines
-    # a resample algorithm for increasing image resolution
-    # we need heatmap.detach() because it can't be converted to numpy array while
-    # requiring gradients
-    overlay = to_pil_image(heatmap.detach(), mode='F').resize((256, 256), resample=PIL.Image.BICUBIC)
-    # Apply any colormap you want
-    cmap = colormaps['jet']
-    overlay = (255 * cmap(np.asarray(overlay) ** 2)[:, :, :3]).astype(np.uint8)
-    # Plot the heatmap on the same axes,
-    # but with alpha < 1 (this defines the transparency of the heatmap)
-    ax.imshow(overlay, alpha=0.4, interpolation='nearest', extent='extent')
-    # Show the plot
-    plt.show()
 
 
 def _generate_gradcam_heatmap(img_tensor, model):
@@ -118,6 +123,7 @@ def _generate_gradcam_heatmap(img_tensor, model):
     # relu on top of the heatmap
     heatmap = F.relu(heatmap)
     # normalize the heatmap
+    heatmap -= torch.min(heatmap)
     heatmap /= torch.max(heatmap)
 
     # cleanup
@@ -129,12 +135,19 @@ def _generate_gradcam_heatmap(img_tensor, model):
     return heatmap, pooled_gradients, embeddings
 
 
-def collect_embeddings_and_gradients(model, data_loader, pickle_path, end=1000):
+
+def collect_embeddings_and_gradients(model, data_loader, gradients_zarr_path, embeddings_zarr_path, end=1000):
     # Encode all images in the data_loader using model, and return both images and encodings
-    grad_dict = {}
+    embeddings_zarr = None
+    gradients_zarr = None
+
     model.eval()  # not nograd
     i = 0
     for imgs, _ in tqdm(data_loader, desc="Encoding images", leave=False):
+        if i == end:
+            break
+        i += 1
+
         pooled_gradients, embeddings = GradCAM(model, imgs, plot=False)
         # convert to numpy array
         pooled_gradients = pooled_gradients.detach().cpu().numpy()
@@ -142,17 +155,22 @@ def collect_embeddings_and_gradients(model, data_loader, pickle_path, end=1000):
 
         # convert to float 16 to save memory
         pooled_gradients = pooled_gradients.astype(np.float16)
-        # embeddings = embeddings.astype(np.float16)
-        # add pooled_gradients and embeddings to array
-        # embed_array, grad_array = _combine_arrays(embed_array, embeddings, grad_array, pooled_gradients)
-        grad_dict[embeddings.tobytes()] = pooled_gradients
-        i += 1
-        if i % 30 == 0:
-            grad_dict = _dump_dictionary(grad_dict, pickle_path)
-        if i == end:
-            break
+        embeddings = embeddings.astype(np.float16)
 
-    _dump_dictionary(grad_dict, pickle_path)
+        # add batch dimension
+        pooled_gradients = np.expand_dims(pooled_gradients, axis=0)
+        embeddings = np.expand_dims(embeddings, axis=0)
+
+        if not embeddings_zarr:
+            # initialize zarr arrays
+            gradients_zarr = zarr.array(pooled_gradients)
+            embeddings_zarr = zarr.array(embeddings)
+        else:  # store in zarr
+            gradients_zarr.append(pooled_gradients, axis=0)
+            embeddings_zarr.append(embeddings, axis=0)
+
+    zarr.save(gradients_zarr_path, gradients_zarr)
+    zarr.save(embeddings_zarr_path, embeddings_zarr)
 
 
 def _dump_dictionary(grad_dict, pickle_path):
@@ -168,13 +186,7 @@ def _dump_dictionary(grad_dict, pickle_path):
     return {}
 
 
-def read_database(pickle_path):
-    """Reads a pickle file and returns the dictionary"""
-    with open(pickle_path, 'rb') as f:
-        return pickle.load(f)
-
-
-def build_database(data_path, work_path, model_path, n=30):
+def build_database(data_path, work_path, model, database_path, n=30):
     """
     Builds a database of embeddings and gradients for all images in the data_path's training loader
     :param data_path:
@@ -182,52 +194,55 @@ def build_database(data_path, work_path, model_path, n=30):
     :param model_path:
     :return:
     """
-    pck_path = path.join(work_path, "grad_array.pkl")
+    gradients_zarr = path.join(database_path, "grad_array.zarr")
+    embeddings_zarr = path.join(database_path, "embs_array.zarr")
     data_module = Two4TwoDataModule(data_dir=data_path, working_path=work_path)
-    model = VQVAE.load_from_checkpoint(model_path, map_location=device)
     # img_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/test.png"
     # GradCAM(model, img_path)
 
     data_loader = extract_data_loader(data_module, "fit")
-    collect_embeddings_and_gradients(model, data_loader, pck_path, end=n)
+    collect_embeddings_and_gradients(model, data_loader, gradients_zarr, embeddings_zarr, end=n)
     #  array is saved in a format of [embedding, gradient]
     print("done")
 
 
-def get_k_nearest_neighbours_gradients(grad_dict, embeddings, k=1):
+def read_database(database_path):
+    gradients_zarr = path.join(database_path, "grad_array.zarr")
+    embeddings_zarr = path.join(database_path, "embs_array.zarr")
+    gradients = zarr.load(gradients_zarr)
+    embeddings = zarr.load(embeddings_zarr)
+    return embeddings, gradients
+
+
+def get_k_nearest_neighbours(embeddings, embeddings_db, k=1):
     embeddings = embeddings.detach().cpu().numpy()
-    x = embeddings.tobytes()
-    buffer = np.frombuffer(x)
+    # remove the batch dimension
+    #    embeddings = embeddings.squeeze()
+    # calculate the distance between the embeddings and the embeddings in the database
+    distances = np.linalg.norm(embeddings_db - embeddings, axis=0)
+    # sum the distances across the last 2 channels
+    distances = np.sum(distances, axis=(1, 2))
 
-    # get the k nearest neighbours from the dictionary keys
-    keys = np.array([np.frombuffer(key, dtype=np.float32) for key in grad_dict.keys()])
-    arr = keys[0]
-    # calculate the distance between the embeddings and the keys
-    distances = np.linalg.norm(keys - embeddings, axis=1)
     # get the indices of the k smallest distances
-
     indices = np.argpartition(distances, k)[:k]
-    # get the keys of the k smallest distances
-    keys = keys[indices]
-    # get the gradients of the k smallest distances
-    gradients = np.array([grad_dict[key.tobytes()] for key in keys])
-    return gradients
+
+    return indices
 
 
 if __name__ == '__main__':
     data_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two"
     work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
-    model_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/VAE2.ckpt"
+    model_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/VAE.ckpt"
     database_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/database"
-
-    build_database(data_path, work_path, model_path, n=10)
 
     img_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/test.png"
     model = VQVAE.load_from_checkpoint(model_path, map_location=device)
-    # GradCAM(model, img_batch=None, plot=True, img_path=img_path)
 
-    database_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/grad_array.pkl"
-    grad_dict = read_database(database_path)
+    GradCAM(model, img_batch=None, plot=True, img_path=img_path)
+
+    build_database(data_path, work_path, model, database_path, n=100)
+
+    embeddings_db, gradients_db = read_database(database_path)
 
     # generate embeddings from image
     img = Image.open(img_path)
@@ -240,19 +255,12 @@ if __name__ == '__main__':
     f_hook = model._pre_vq_conv.register_forward_hook(forward_hook)
     loss, reconstruction, perplexity, embeddings = model(img_tensor.to(device))
 
-    # get gradients from database via a k nearest neighbour search
+    # get gradients index from database via a k nearest neighbour search
     k = 1
     # get k nearest neighbours gradients
-    pooled_gradients = get_k_nearest_neighbours_gradients(grad_dict, embeddings, k)
+    index = get_k_nearest_neighbours(embeddings, embeddings_db, k)
 
-    # average gradients
-    avg_gradients = np.mean(pooled_gradients, axis=0)  # not in the model
-
-    for i in range(activations.size()[1]):
-        activations[:, i, :, :] *= avg_gradients[i]
-
-    heatmap = torch.mean(activations, dim=1).squeeze()
-
-    activations = None  # reset activations
+    # get the gradients from the database
+    gradients = gradients_db[index]
 
     print("done")
