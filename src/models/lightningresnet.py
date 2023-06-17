@@ -1,12 +1,9 @@
-from typing import Type, Any, Callable, Union, List, Optional
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorch_lightning import LightningModule
-from torch import Tensor
-from torch.utils.model_zoo import load_url as load_state_dict_from_url
+from lightning.pytorch import LightningModule
 from torchmetrics.functional import accuracy
+
 from interpretable_resnet import get_resnet
 
 

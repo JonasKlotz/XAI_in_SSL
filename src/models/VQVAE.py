@@ -4,6 +4,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+# fix seed from lightning
+L.seed_everything(42)
+
 
 class VectorQuantizer(nn.Module):
     def __init__(self, num_embeddings, embedding_dim, commitment_cost):
@@ -182,7 +185,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens):
+    def __init__(self, in_channels, num_hiddens, num_residual_layers, num_residual_hiddens, output_channels):
         super(Decoder, self).__init__()
 
         self._conv_1 = nn.Conv2d(in_channels=in_channels,
@@ -201,7 +204,7 @@ class Decoder(nn.Module):
                                                 stride=2, padding=1)
 
         self._conv_trans_2 = nn.ConvTranspose2d(in_channels=num_hiddens // 2,
-                                                out_channels=3,
+                                                out_channels=output_channels,
                                                 kernel_size=4,
                                                 stride=2, padding=1)
 
@@ -218,12 +221,12 @@ class Decoder(nn.Module):
 
 class VQVAE(L.LightningModule):
     def __init__(self, num_hiddens, num_residual_layers, num_residual_hiddens,
-                 num_embeddings, embedding_dim, commitment_cost, decay=0, data_variance=1):
+                 num_embeddings, embedding_dim, commitment_cost, decay=0, data_variance=1, input_channels=3):
         super(VQVAE, self).__init__()
         # Saving hyperparameters of autoencoder
         self.save_hyperparameters()
 
-        self._encoder = Encoder(3, num_hiddens,
+        self._encoder = Encoder(input_channels, num_hiddens,
                                 num_residual_layers,
                                 num_residual_hiddens)
         self._pre_vq_conv = nn.Conv2d(in_channels=num_hiddens,
@@ -239,16 +242,18 @@ class VQVAE(L.LightningModule):
         self._decoder = Decoder(embedding_dim,
                                 num_hiddens,
                                 num_residual_layers,
-                                num_residual_hiddens)
+                                num_residual_hiddens,
+                                output_channels=input_channels)
 
     def encode_and_quantize(self, x):
         embeddings = self._encoder(x)
         embeddings = self._pre_vq_conv(embeddings)
-        loss, quantized, perplexity, _ = self._vq_vae(embeddings)
+        loss, quantized, perplexity, encodings = self._vq_vae(embeddings)
         return loss, quantized, perplexity, embeddings
 
     def forward(self, x):
         loss, quantized, perplexity, embeddings = self.encode_and_quantize(x)
+
         reconstruction = self._decoder(quantized)
 
         return loss, reconstruction, perplexity, embeddings
