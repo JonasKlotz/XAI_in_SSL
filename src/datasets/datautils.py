@@ -1,10 +1,18 @@
 import tarfile
 import os
 import os.path
-# simple function to extract the train data
-# tar_file : the path to the .tar file
-# path : the path where it will be extracted
+from PIL import Image
+from torchvision import transforms
+
+
+
 def extract(tar_file, path):
+    """Extracts the tar file to the path specified
+    Args:
+        tar_file: the tar file
+        path: the path to extract the tar file to
+    """
+
     if not os.path.isfile(tar_file) :
         print("The not a file")
         return
@@ -34,3 +42,13 @@ def extract_data_loader(data_module, stage="fit"):
     elif stage == "predict":
         data_loader = data_module.predict_dataloader()
     return data_loader
+
+
+def load_img_to_batch(img_path):
+    # generate embeddings from image
+    img = Image.open(img_path)
+    # convert img to rgb
+    img = img.convert('RGB')
+    # convert to tensor
+    img_tensor = transforms.ToTensor()(img).unsqueeze(0)
+    return img_tensor

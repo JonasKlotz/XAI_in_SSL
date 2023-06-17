@@ -8,6 +8,14 @@ import torchvision
 from lightning.pytorch.callbacks import Callback, LearningRateMonitor, ModelCheckpoint
 
 from models.VQVAE import VQVAE
+from models.bolts import load_simclr
+
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    print("Using GPU")
+else:
+    device = torch.device("cpu")
+    print("Using CPU")
 
 
 def load_image_from_datamodule(datamodule, index=None):
@@ -117,6 +125,7 @@ def train_vqvae_dataloader(working_path, train_loader, val_loader, test_loader, 
     return model, result
 
 
+# We use the hyperparameters from the author's code:
 batch_size = 256
 num_training_updates = 15000
 num_hiddens = 128
@@ -129,10 +138,7 @@ decay = 0.99
 learning_rate = 1e-3
 
 
-def train_vqvae_datamodule(working_path, datamodule, max_epochs=50, learning_rate=1e-3, decay=0.99,
-                           commitment_cost=0.25, embedding_dim=4,  # 64,
-                           num_residual_layers=2, num_residual_hiddens=16, num_hiddens=8, num_training_updates=15000,
-                           batch_size=256):
+def train_with_datamodule(working_path, datamodule, model, max_epochs=50, model_name='vqvae'):
     """ Trains a VQ-VAE given dataloader.
 
 
@@ -143,7 +149,7 @@ def train_vqvae_datamodule(working_path, datamodule, max_epochs=50, learning_rat
 
     # Create a PyTorch Lightning trainer with the generation callback
     trainer = L.Trainer(
-        default_root_dir=os.path.join(working_path, "vqvae_results"),
+        default_root_dir=os.path.join(working_path, model_name + "_results"),
         accelerator="auto",
         devices=1,
         max_epochs=max_epochs,
@@ -156,10 +162,6 @@ def train_vqvae_datamodule(working_path, datamodule, max_epochs=50, learning_rat
     trainer.logger._log_graph = True  # If True, we plot the computation graph in tensorboard
     trainer.logger._default_hp_metric = None  # Optional logging argument that we don't need
 
-    model = VQVAE(num_hiddens, num_residual_layers, num_residual_hiddens,
-                  num_embeddings, embedding_dim,
-                  commitment_cost, decay)
-
     trainer.fit(model, datamodule=datamodule)
     # Test best model on validation and test set
     val_result = trainer.test(model, datamodule=datamodule, verbose=False)
@@ -168,11 +170,28 @@ def train_vqvae_datamodule(working_path, datamodule, max_epochs=50, learning_rat
     return model, result
 
 
+
+
 if __name__ == '__main__':
     from datasets.two4two import Two4TwoDataModule
 
     working_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
-    datapath = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two"
-    datamodule = Two4TwoDataModule(datapath)
+    # datapath = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two"
+    # datamodule = Two4TwoDataModule(datapath)
+    datapath = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/mnist"
+    from datasets.mnist import MNISTDataModule
 
-    train_vqvae_datamodule(working_path=working_path, datamodule=datamodule, max_epochs=1)
+    datamodule = MNISTDataModule(datapath)
+    embedding_dim = 4
+    model = VQVAE(num_hiddens, num_residual_layers, num_residual_hiddens,
+                  num_embeddings, embedding_dim,
+                  commitment_cost, decay, input_channels=1)
+    #model = load_vqvae()
+    #model = load_simclr()
+    #model = load_swav()
+    layer_name= '_pre_vq_conv'
+    layer = getattr(model, layer_name)
+    print(layer)
+
+    #train_with_datamodule(working_path=working_path, datamodule=datamodule, model=model, max_epochs=1)
+    #print(model)
