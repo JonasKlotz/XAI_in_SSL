@@ -1,8 +1,7 @@
 import numpy as np
 import plotly.express as px
-
-gradients = None
-activations = None
+import torch
+import matplotlib.pyplot as plt
 
 
 def _plot_grad_heatmap_and_img(heatmap, img_tensor):
@@ -30,7 +29,13 @@ def _plot_grad_heatmap_and_img(heatmap, img_tensor):
     # fig.add_trace(go.Image(z=heatmap), row=1, col=2)
     # fig.show()
 
-def _plot_grad_heatmap(heatmap):
-    data = heatmap.detach()
-    fig = px.imshow(data)
-    fig.show()
+def _plot_grad_heatmap(heatmap, title=""):
+    fig, ax = plt.subplots()
+    # Plot the heatmap
+    im = ax.imshow(heatmap)
+    cbarlabel = "Importance"
+    # Create colorbar
+    cbar = ax.figure.colorbar(im, ax=ax)
+    cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")
+    ax.set_title(title)
+    plt.show()

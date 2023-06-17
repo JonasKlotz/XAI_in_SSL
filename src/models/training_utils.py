@@ -189,6 +189,9 @@ if __name__ == '__main__':
     #model = load_vqvae()
     #model = load_simclr()
     #model = load_swav()
+    layer_name= '_pre_vq_conv'
+    layer = getattr(model, layer_name)
+    print(layer)
 
-    train_with_datamodule(working_path=working_path, datamodule=datamodule, model=model, max_epochs=1)
-    print(model)
+    #train_with_datamodule(working_path=working_path, datamodule=datamodule, model=model, max_epochs=1)
+    #print(model)
