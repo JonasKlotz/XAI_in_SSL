@@ -190,6 +190,6 @@ if __name__ == '__main__':
     # eval = metric.evaluate_instance(model, img, label, heatmap, mask)
 
     metric = TopKIntersection(k=1000, return_aggregate=True)
-    eval = metric(model=model, x_batch=x_batch, s_batch=s_batch, y_batch=y_batch, a_batch=a_batch)
+    eval = metric(x_batch=x_batch, s_batch=s_batch, a_batch=a_batch)
     print(eval)
     print("done")

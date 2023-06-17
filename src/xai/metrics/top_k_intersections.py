@@ -24,28 +24,26 @@ class TopKIntersection(Metric):
     """
 
     def __init__(
-        self,
-        k: int = 1000,
-        concept_influence: bool = False,
-        **kwargs,
+            self,
+            k: int = 1000,
+            concept_influence: bool = False,
+            **kwargs,
     ):
         super().__init__(**kwargs)
         # Save metric-specific attributes.
         self.k = k
         self.concept_influence = concept_influence
 
-
-
     def __call__(
-        self,
-        model,
-        x_batch: np.array,
-        y_batch: Optional[np.ndarray] = None,
-        a_batch: Optional[np.ndarray] = None,
-        s_batch: Optional[np.ndarray] = None,
-        device: Optional[str] = None,
-        batch_size: int = 64,
-        **kwargs,
+            self,
+            x_batch: np.array,
+            model=None,
+            y_batch: Optional[np.ndarray] = None,
+            a_batch: Optional[np.ndarray] = None,
+            s_batch: Optional[np.ndarray] = None,
+            device: Optional[str] = None,
+            batch_size: int = 64,
+            **kwargs,
     ) -> List[float]:
         """
         This implementation represents the main logic of the metric and makes the class object callable.
@@ -63,14 +61,14 @@ class TopKIntersection(Metric):
         )
 
     def evaluate_instance(
-        self,
-        model: torch.nn.Module,
-        x: np.ndarray,
-        y: np.ndarray,
-        a: np.ndarray,
-        s: np.ndarray,
-        device=None,
-        **kwargs,
+            self,
+            model: torch.nn.Module,
+            x: np.ndarray,
+            y: np.ndarray,
+            a: np.ndarray,
+            s: np.ndarray,
+            device=None,
+            **kwargs,
     ):
         """
         Evaluate instance gets model and data for a single instance as input and returns the evaluation result.
@@ -95,14 +93,13 @@ class TopKIntersection(Metric):
             :param device:
         """
 
-
         # Prepare shapes.
         s = s.astype(bool)
         top_k_binary_mask = np.zeros(a.shape)
 
         # Sort and create masks.
         sorted_indices = np.argsort(a, axis=None)
-        np.put_along_axis(top_k_binary_mask, sorted_indices[-self.k :], 1, axis=None)
+        np.put_along_axis(top_k_binary_mask, sorted_indices[-self.k:], 1, axis=None)
         top_k_binary_mask = top_k_binary_mask.astype(bool)
 
         # Top-k intersection.
@@ -113,4 +110,3 @@ class TopKIntersection(Metric):
             tki = np.prod(s.shape) / np.sum(s) * tki
 
         return tki
-
