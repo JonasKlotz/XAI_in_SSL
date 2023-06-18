@@ -266,7 +266,7 @@ class VQVAE(L.LightningModule):
         return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "val_loss"}
 
     def training_step(self, batch, batch_idx):
-        data, _ = batch  # We do not need the labels
+        data, _, _ = batch  # We do not need the labels or masks
         vq_loss, data_recon, perplexity, embeddings = self.forward(data)
         recon_error = F.mse_loss(data_recon, data) / self.hparams.data_variance
         loss = recon_error + vq_loss
@@ -275,7 +275,7 @@ class VQVAE(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        data, _ = batch  # We do not need the labels
+        data, _, _ = batch  # We do not need the labels or masks
         vq_loss, data_recon, perplexity, embeddings = self.forward(data)
         recon_error = F.mse_loss(data_recon, data) / self.hparams.data_variance
         loss = recon_error + vq_loss
@@ -283,7 +283,7 @@ class VQVAE(L.LightningModule):
         self.log("val_loss", loss)
 
     def test_step(self, batch, batch_idx):
-        data, _ = batch  # We do not need the labels
+        data, _, _ = batch  # We do not need the labels or masks
         vq_loss, data_recon, perplexity, embeddings = self.forward(data)
         recon_error = F.mse_loss(data_recon, data) / self.hparams.data_variance
         loss = recon_error + vq_loss

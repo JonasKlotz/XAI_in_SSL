@@ -16,7 +16,8 @@ class Two4TwoDataset(torch.utils.data.Dataset):
     def __init__(self,
                  data_input_dir,
                  mode='train',
-                 transform=None):
+                 transform=None,
+                 target_transform=None):
 
         if transform is None:
             transform = transforms.ToTensor()
@@ -29,6 +30,7 @@ class Two4TwoDataset(torch.utils.data.Dataset):
         self.label_col_idx = self.parameters.columns.get_loc("label")
 
         self.transform = transform
+        self.target_transform = target_transform
 
     def __len__(self):
         return len(self.parameters)
@@ -41,13 +43,25 @@ class Two4TwoDataset(torch.utils.data.Dataset):
                                 self.parameters.iloc[idx, self.id_col_idx] + '.png')
 
         image = cv2.imread(str(img_name))
+        mask_name = os.path.join(self.root_dir,
+                                self.parameters.iloc[idx, self.id_col_idx] + '_mask.png')
+        mask = cv2.imread(str(mask_name))
+        # binarize mask with open cv thresh
+
+        mask = self.target_transform(mask)
+        # convert into 1 channel
+
+        # binarize mask
+        #mask = torch.where(mask > 0, torch.tensor(1), torch.tensor(0))
+
+
         #image = cv2.cvtColor(image, cv2.COLOR_RGB2RGBA) # convert to 3 channels
 
         label = self.parameters.iloc[idx, self.label_col_idx]
 
-        image = self.transform(transforms.ToPILImage()(image))
+        image = self.transform(image)
 
-        sample = (image / 255., label)
+        sample = (image / 255.,mask, label)
 
         return sample
 
@@ -71,7 +85,8 @@ class Two4TwoDataModule(L.LightningDataModule):
         self.working_path = working_path
         self.batch_size = batch_size
         self.num_workers = 0
-        self.transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+        self.transform = transforms.Compose([transforms.ToPILImage(), transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+        self.mask_transform = transforms.Compose([transforms.ToPILImage(), transforms.ToTensor()])
 
     def prepare_data(self):
         # extract ?
@@ -93,15 +108,15 @@ class Two4TwoDataModule(L.LightningDataModule):
     def setup(self, stage: str):
         # Assign train/val datasets for use in dataloaders
         if stage == "fit":
-            self.two2two_train = Two4TwoDataset(self.data_dir, mode='train', transform=self.transform)
-            self.two2two_val = Two4TwoDataset(self.data_dir, mode='validation', transform=self.transform)
+            self.two2two_train = Two4TwoDataset(self.data_dir, mode='train', transform=self.transform, target_transform=self.mask_transform)
+            self.two2two_val = Two4TwoDataset(self.data_dir, mode='validation', transform=self.transform, target_transform=self.mask_transform)
 
         # Assign test dataset for use in dataloader(s)
         if stage == "test":
-            self.two2two_test = Two4TwoDataset(self.data_dir, mode='test', transform=self.transform)
+            self.two2two_test = Two4TwoDataset(self.data_dir, mode='test', transform=self.transform, target_transform=self.mask_transform)
 
         if stage == "predict":
-            self.two2two__predict = Two4TwoDataset(self.data_dir, mode='test', transform=self.transform)
+            self.two2two__predict = Two4TwoDataset(self.data_dir, mode='test', transform=self.transform, target_transform=self.mask_transform)
 
     def train_dataloader(self):
         return DataLoader(self.two2two_train, batch_size=self.batch_size, num_workers=self.num_workers)

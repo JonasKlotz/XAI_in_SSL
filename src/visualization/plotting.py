@@ -93,3 +93,37 @@ def visualize_reconstructions(model, input_imgs):
     plt.imshow(grid)
     plt.axis("off")
     plt.show()
+
+
+def plot_img_mask_heatmap(img, mask, heatmap):
+    img = make_img_plotable(img)
+    mask = make_img_plotable(mask)
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 4))
+    ax1.imshow(img)
+    ax2.imshow(mask)
+    m = ax3.imshow(heatmap)
+    ax1.axis('off')
+    ax2.axis('off')
+    ax3.axis('off')
+    ax1.set_title('Image')
+    ax2.set_title('Mask')
+    ax3.set_title('Heatmap')
+
+    cbarlabel = "Importance"
+    # Create colorbar
+    cbar = ax3.figure.colorbar(m, ax=ax3)
+    cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")
+
+    plt.tight_layout()
+    plt.show()
+
+def make_img_plotable(img):
+    """
+    Transforms a torch tensor into a numpy array that can be plotted with matplotlib.
+    """
+    img = img.detach().cpu().numpy()
+    img = np.transpose(img, (1, 2, 0))
+    img -= np.min(img)
+    img /= np.max(img)
+    return img
