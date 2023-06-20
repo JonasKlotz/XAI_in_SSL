@@ -9,7 +9,7 @@ import zarr
 from os import path
 
 
-def build_database(data_module, model, encoder, database_path, layer, n=30):
+def build_database(data_module, model, encoder, database_path, layer, n=None):
     """
     Builds a database of embeddings and gradients for all images in the data_path's training loader
     """
@@ -49,10 +49,13 @@ def collect_embeddings_and_gradients(model, encoder, data_loader, gradients_zarr
         pooled_gradients = np.expand_dims(pooled_gradients, axis=0)
         # embeddings = np.expand_dims(embeddings, axis=0)
 
-        if not embeddings_zarr:
+        if not embeddings_zarr and not gradients_zarr:
             # initialize zarr arrays
-            gradients_zarr = zarr.array(pooled_gradients)
-            embeddings_zarr = zarr.array(embeddings)
+            gradients_zarr = zarr.open_array(gradients_zarr_path, mode='w', shape=pooled_gradients.shape)
+            gradients_zarr.append(pooled_gradients, axis=0)
+
+            embeddings_zarr = zarr.open_array(embeddings_zarr_path, mode='w', shape=embeddings.shape)
+            embeddings_zarr.append(embeddings, axis=0)
         else:  # store in zarr
             gradients_zarr.append(pooled_gradients, axis=0)
             embeddings_zarr.append(embeddings, axis=0)
