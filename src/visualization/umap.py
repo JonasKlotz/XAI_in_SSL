@@ -1,9 +1,10 @@
 import matplotlib.pyplot as plt
 import torch
 import torchvision
-from tqdm.notebook import tqdm
 
 import umap
+
+from datasets.datautils import embed_imgs
 
 
 def find_similar_images(query_img, query_z, key_embeds, K=8):
@@ -19,21 +20,6 @@ def find_similar_images(query_img, query_z, key_embeds, K=8):
     plt.imshow(grid)
     plt.axis("off")
     plt.show()
-
-
-def embed_imgs(model, data_loader):
-    # Encode all images in the data_loader using model, and return both images and encodings
-    img_list, embed_list = [], []
-    model.eval()
-    i = 0
-    for imgs, _ in tqdm(data_loader, desc="Encoding images", leave=False):
-        with torch.no_grad():
-            _, z, _ = model.encode_and_quantize(imgs.to(model.device))
-        img_list.append(imgs)
-        embed_list.append(z)
-        if i == 100:
-            pass
-    return (torch.cat(img_list, dim=0), torch.cat(embed_list, dim=0))
 
 
 def plot_similar_images(model, train_loader, test_loader):

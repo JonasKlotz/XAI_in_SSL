@@ -1,3 +1,5 @@
+from typing import List
+
 from PIL import Image
 from numpy import matlib as mb
 import cv2
@@ -5,14 +7,16 @@ import matplotlib as mpl
 import torch
 import numpy as np
 from matplotlib import pyplot as plt
+from torchvision.transforms import transforms
 
-from datasets.datautils import sample_from_data_module
+from datasets.datautils import sample_from_data_module, extract_data_loader, embed_imgs, load_img_to_batch
 from datasets.two4two import Two4TwoDataModule
 from models.VQVAE import VQVAE
+from models.bolts import load_vqvae
 
 
 class HookModel(torch.nn.Module):
-    def __init__(self, model, layers):
+    def __init__(self, model, layers:List[torch.nn.Module]):
         super().__init__()
         self.gradients = None
         self.tensorhook = []
@@ -21,8 +25,8 @@ class HookModel(torch.nn.Module):
 
         self.pretrained = model
 
-        for i in layers:
-            self.pretrained.convs[i].register_forward_hook(self.forward_hook())
+        for layer in layers:
+            layer.register_forward_hook(self.forward_hook())
 
         for p in self.pretrained.parameters():
             p.requires_grad = True
@@ -81,9 +85,13 @@ def compute_spatial_similarity(conv1, conv2):
     return similarity1, similarity2
 
 
-def get_heatmaps(model, img1, img2, device, transform):
-    _, activations1 = model(transform(img1).unsqueeze(0).to(device))
-    _, activations2 = model(transform(img2).unsqueeze(0).to(device))
+def get_heatmaps(model, img1, img2, device, transform=None):
+    if transform:
+        img1 = transform(img1)
+        img2 = transform(img2)
+
+    _, activations1 = model(img1.to(device))
+    _, activations2 = model(img2.to(device))
     heatmaps1 = []
     heatmaps2 = []
     print(len(activations1), activations1[0].shape)
@@ -126,12 +134,13 @@ def plot_heatmaps(img, img_sim, heatmaps, heatmaps_sim, layers):
         axarr[1, i + 1].axis('off')
     plt.tight_layout()
     plt.colorbar(mpl.cm.ScalarMappable(cmap='inferno'), ax=axarr.ravel().tolist(), shrink=0.8)
+    plt.show()
 
 
 if __name__ == '__main__':
     data_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two"
     work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
-    model_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/VAE.ckpt"
+    model_path = '/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/models/bolt_vae.ckpt'
     database_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/database"
 
     if torch.cuda.is_available():
@@ -141,16 +150,77 @@ if __name__ == '__main__':
         device = torch.device("cpu")
         print("Using CPU")
 
-    # img_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/test.png"
-    # img_tensor = load_img_to_batch(img_path)
-    model = VQVAE.load_from_checkpoint(model_path, map_location=device)
+    img_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/test.png"
+    img_tensor = load_img_to_batch(img_path)
+    # model = VQVAE.load_from_checkpoint(model_path, map_location=device)
+    model = load_vqvae(input_height=128, input_width=128, input_channels=3)
+    model = model.load_from_checkpoint(model_path, map_location=device)
+
+
+    encoder = model.encoder
+
     data_module = Two4TwoDataModule(data_dir=data_path, working_path=work_path, batch_size=4)
+    transformations = data_module.transform
 
-    sample, _ = sample_from_data_module(data_module)
-
-    # plot real images
-    plt.figure(figsize=(10, 4))
+    query_imgs, _, _ = sample_from_data_module(data_module, stage='test')
+    query_img = query_imgs[0]
+    # expand dims
+    query_img = query_img.unsqueeze(0)
+    # # plot real images
+    # plt.figure(figsize=(10, 4))
     from torchvision.utils import make_grid
 
-    plt.axis('off')
-    plt.imshow(make_grid(sample, normalize=True, value_range=(-1, 1), nrow=len(sample)).permute(1, 2, 0))
+    #
+    # plt.axis('off')
+    # plt.imshow(make_grid(query_imgs, normalize=True, nrow=len(query_imgs)).permute(1, 2, 0))
+    # plt.show()
+    data_loader = extract_data_loader(data_module)
+    ds_imgs, ds_embeddings = embed_imgs(encoder, data_loader, device=device, num_batches=15)
+    print(ds_imgs.shape, ds_embeddings.shape)
+
+    # embed query imgs
+    with torch.no_grad():
+        query_embeddings = encoder(query_img.to(device)).cpu().numpy()
+
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    # calc cosine similarity between query imgs and dataset images
+    most_similar = cosine_similarity(query_embeddings, ds_embeddings)
+    id_most_similar = np.argsort(-most_similar, axis=1)[:, 0]
+    most_sim_img = ds_imgs[id_most_similar]
+
+    # plt.figure(figsize=(10, 5))
+    # plt.axis('off')
+    # plt.title('Query', fontsize=20, loc='left')
+    # plt.title('Most similar', fontsize=20, loc='right')
+    # plt.imshow(
+    #     make_grid(torch.cat([query_img, most_sim_img]), normalize=True, nrow=2).permute(1, 2, 0))
+    # plt.show()
+
+    # hook model
+    layers = [encoder.layer4[1].conv2]  # last conv layer?
+    hook_model = HookModel(encoder, layers=layers).to(device)
+
+    # # denormalize tensors and convert to PIL images
+    # query_img_pil = transforms.ToPILImage()((query_img.squeeze(0) + 1) / 2)
+    # most_sim_img_pil = transforms.ToPILImage()((most_sim_img.squeeze(0) + 1) / 2)
+
+    heatmaps, heatmaps_sim = get_heatmaps(hook_model, query_img, most_sim_img, device, transform=None)
+    # remove batch dim for images
+    query_img = query_img.squeeze(0)
+    query_img -= query_img.min()
+    query_img /= query_img.max()
+
+    most_sim_img = most_sim_img.squeeze(0)
+    most_sim_img -= most_sim_img.min()
+    most_sim_img /= most_sim_img.max()
+
+
+
+    query_img_pil = transforms.ToPILImage()(query_img)
+    most_sim_img_pil = transforms.ToPILImage()(most_sim_img)
+    plot_heatmaps(query_img_pil, most_sim_img_pil, heatmaps, heatmaps_sim, layers)
+
+
+
+
