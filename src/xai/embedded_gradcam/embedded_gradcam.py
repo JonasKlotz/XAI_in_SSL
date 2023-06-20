@@ -1,23 +1,19 @@
 import os
-import sys
+from os import path
 from typing import Optional
 
-from visualization.plotting import plot_img_mask_heatmap
+import numpy as np
+import torch
+import zarr
+from skimage.transform import resize
+
+from datasets.datautils import extract_data_loader
+from datasets.two4two import Two4TwoDataModule
+from models.bolts import load_vqvae
 from xai.embedded_gradcam.database import build_database
 from xai.embedded_gradcam.gradcam import generate_activations
 from xai.embedded_gradcam.helpers import _plot_grad_heatmap
 from xai.metrics.top_k_intersections import TopKIntersection
-
-
-import numpy as np
-from datasets.datautils import load_img_to_batch, extract_data_loader
-import zarr
-from datasets.two4two import Two4TwoDataModule
-from models.VQVAE import VQVAE
-import torch
-from os import path
-
-from skimage.transform import resize
 
 # gradients = None
 outer_activations = None
@@ -50,7 +46,7 @@ def get_k_nearest_neighbours(embeddings, embeddings_db, k=1):
     return indices
 
 
-def explain_image(image_tensor, model, layer, embeddings_db, gradients_db, k=5, plot=True):
+def explain_image(image_tensor, model, encoder, layer, embeddings_db, gradients_db, k=5, plot=True):
     """Generates a heatmap for the given image tensor
     Args:
         image_tensor: the image tensor shape (b, c, h, w)
@@ -67,8 +63,10 @@ def explain_image(image_tensor, model, layer, embeddings_db, gradients_db, k=5, 
     if image_tensor.ndim == 3:
         image_tensor = image_tensor.unsqueeze(0)
 
+    embeddings = encoder(image_tensor)
+
     dims = image_tensor.size()[2:]
-    tmp_activations, embeddings = generate_activations(model, layer, image_tensor)
+    tmp_activations = generate_activations(model, layer, image_tensor)
     # get gradients index from database via a k nearest neighbour search
     # get k nearest neighbours gradients
     index = get_k_nearest_neighbours(embeddings, embeddings_db, k)
@@ -105,6 +103,7 @@ def explain_image(image_tensor, model, layer, embeddings_db, gradients_db, k=5, 
 
 def explain_batch(
         model: torch.nn.Module,
+        encoder: torch.nn.Module,
         layer: torch.nn.Module,
         embeddings_db: np.ndarray,
         gradients_db: np.ndarray,
@@ -118,6 +117,8 @@ def explain_batch(
     ----------
     model: nn.Module
         The model to explain
+    encoder: nn.Module
+        The encoder to explain
     layer: nn.Module
         The layer to explain
     embeddings_db: np.ndarray
@@ -141,7 +142,8 @@ def explain_batch(
     heatmaps = np.zeros((x_batch.size()[0], x_batch.size()[2], x_batch.size()[3]))
     # iterate over batch and generate heatmaps
     for i in range(x_batch.size()[0]):
-        heatmap = explain_image(x_batch[i], model, layer, embeddings_db, gradients_db, k=10, plot=plot)
+        heatmap = explain_image(x_batch[i], model=model, encoder=encoder, layer=layer, embeddings_db=embeddings_db,
+                                gradients_db=gradients_db, k=10, plot=plot)
         heatmaps[i] = heatmap
 
     if save:
@@ -153,18 +155,21 @@ def explain_batch(
 if __name__ == '__main__':
     data_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two"
     work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
-    model_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/VAE.ckpt"
+    model_path = '/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/models/bolt_vae.ckpt'
     database_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/database"
 
     # img_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/test.png"
     # img_tensor = load_img_to_batch(img_path)
-    model = VQVAE.load_from_checkpoint(model_path, map_location=device)
+    model = load_vqvae(input_height=128, input_channels=3)
+    model = model.load_from_checkpoint(model_path, map_location=device)
+
     data_module = Two4TwoDataModule(data_dir=data_path, working_path=work_path, batch_size=1)
+    encoder = model.encoder
+    layer = encoder.layer4[1].conv2
+    # layer_name = '_pre_vq_conv'
+    # layer = getattr(model, layer_name)
 
-    layer_name = '_pre_vq_conv'
-    layer = getattr(model, layer_name)
-
-    # build_database(data_module, model, work_path, layer, n=100)
+    build_database(data_module=data_module, model=model, encoder=encoder, database_path=database_path, layer=layer, n=25)
 
     embeddings_db, gradients_db = read_database(database_path)
 
@@ -174,7 +179,7 @@ if __name__ == '__main__':
     x_batch, s_batch, y_batch = next(iter(data_loader))
 
     # get heatmaps for batch
-    a_batch = explain_batch(model, layer, embeddings_db, gradients_db, x_batch, save_path=work_path)
+    a_batch = explain_batch(model,encoder, layer, embeddings_db, gradients_db, x_batch, save_path=work_path, plot=True)
 
     # plot_img_mask_heatmap(x_batch[0], s_batch[0],  a_batch[0])
 
@@ -189,5 +194,3 @@ if __name__ == '__main__':
     eval = metric(x_batch=x_batch, s_batch=s_batch, a_batch=a_batch)
     print(eval)
     print("done")
-
-

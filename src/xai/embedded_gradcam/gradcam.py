@@ -33,7 +33,7 @@ def forward_hook(module, args, output):
     # print(f'Activations size: {activations.size()}')
 
 
-def GradCAM(model, layer, img_batch, plot=True, img_path=None):  # NOSONAR
+def GradCAM(model,encoder, layer, img_batch, plot=True, img_path=None):  # NOSONAR
 
     if img_path is not None:
         image = Image.open(img_path).convert('RGB')
@@ -42,7 +42,7 @@ def GradCAM(model, layer, img_batch, plot=True, img_path=None):  # NOSONAR
     else:
         img_tensor = img_batch
 
-    heatmap, pooled_gradients, embeddings = _generate_gradcam_heatmap(img_tensor, model, layer=layer)
+    heatmap, pooled_gradients, embeddings = _generate_gradcam_heatmap(img_tensor, model, encoder, layer=layer)
 
     if plot:
         _plot_grad_heatmap(heatmap)
@@ -51,7 +51,9 @@ def GradCAM(model, layer, img_batch, plot=True, img_path=None):  # NOSONAR
     return pooled_gradients, embeddings
 
 
-def _generate_gradcam_heatmap(img_tensor, model, layer):
+def _generate_gradcam_heatmap(img_tensor: torch.Tensor, model: torch.nn.Module,encoder: torch.nn.Module, layer: torch.nn.Module):
+    img_tensor = img_tensor.to(device)
+    embeddings = encoder(img_tensor)
     # defines two global scope variables to store our gradients and activations
     global activations
     global gradients
@@ -59,9 +61,9 @@ def _generate_gradcam_heatmap(img_tensor, model, layer):
     # register forward hook and backward hook at the layer of interest
     f_hook = layer.register_forward_hook(forward_hook)
     b_hook = layer.register_full_backward_hook(backward_hook)
-
-    # todo: different model outputs??
-    loss, reconstructed, perplexity, embeddings = model(img_tensor.to(device))  # [0].backward()
+    batch_tuple = (img_tensor, None) # tuplerize as models expect that input is a tuple
+    outputs = model.step(batch_tuple, batch_idx=0)  # idx doenst matter
+    loss = outputs[0]  # todo: check if this is correct
     loss.backward()
 
     # pool the gradients across the channels
@@ -85,6 +87,7 @@ def _generate_gradcam_heatmap(img_tensor, model, layer):
 
     return heatmap, pooled_gradients, embeddings
 
+
 def generate_activations(model, layer, img_tensor):
     # defines two global scope variables to store our gradients and activations
     global activations
@@ -92,9 +95,9 @@ def generate_activations(model, layer, img_tensor):
     # register forward hook and backward hook at the layer of interest
     f_hook = layer.register_forward_hook(forward_hook)
 
-    loss, reconstructed, perplexity, embeddings = model(img_tensor.to(device))  # [0].backward()
+    loss = model(img_tensor.to(device))  # [0].backward()
     tmp_activations = activations.detach().clone()
     activations = None
     f_hook.remove()
 
-    return tmp_activations, embeddings
+    return tmp_activations

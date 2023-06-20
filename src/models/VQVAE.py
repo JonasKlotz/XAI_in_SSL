@@ -226,9 +226,9 @@ class VQVAE(L.LightningModule):
         # Saving hyperparameters of autoencoder
         self.save_hyperparameters()
 
-        self._encoder = Encoder(input_channels, num_hiddens,
-                                num_residual_layers,
-                                num_residual_hiddens)
+        self.encoder = Encoder(input_channels, num_hiddens,
+                               num_residual_layers,
+                               num_residual_hiddens)
         self._pre_vq_conv = nn.Conv2d(in_channels=num_hiddens,
                                       out_channels=embedding_dim,
                                       kernel_size=1,
@@ -246,7 +246,7 @@ class VQVAE(L.LightningModule):
                                 output_channels=input_channels)
 
     def encode_and_quantize(self, x):
-        embeddings = self._encoder(x)
+        embeddings = self.encoder(x)
         embeddings = self._pre_vq_conv(embeddings)
         loss, quantized, perplexity, encodings = self._vq_vae(embeddings)
         return loss, quantized, perplexity, embeddings

@@ -1,9 +1,11 @@
 import tarfile
 import os
 import os.path
+
+import torch
 from PIL import Image
 from torchvision import transforms
-
+from tqdm import tqdm
 
 
 def extract(tar_file, path):
@@ -52,3 +54,38 @@ def load_img_to_batch(img_path):
     # convert to tensor
     img_tensor = transforms.ToTensor()(img).unsqueeze(0)
     return img_tensor
+
+
+def sample_from_data_module(data_module, stage="fit"):
+    """Samples a batch from the data module
+    Args:
+        data_module: the data module
+        stage: the stage of the data loader
+    Returns:
+        the batch
+    """
+    data_loader = extract_data_loader(data_module, stage)
+    batch = next(iter(data_loader))
+    return batch
+
+
+def embed_imgs(encoder, data_loader, num_batches=100, device = None):
+    # Encode all images in the data_loader using model, and return both images and encodings
+    img_list, embed_list = [], []
+    encoder.eval()
+    if device:
+        encoder.to(device)
+    i = 0
+    for batch in tqdm(data_loader, desc="Encoding images", leave=False):
+        imgs = batch[0]
+        if device:
+            imgs = imgs.to(device)
+
+        with torch.no_grad():
+            embeddings = encoder(imgs)
+        img_list.append(imgs)
+        embed_list.append(embeddings)
+        i += 1
+        if num_batches and i == num_batches:
+            break
+    return (torch.cat(img_list, dim=0), torch.cat(embed_list, dim=0))

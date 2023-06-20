@@ -9,7 +9,7 @@ import zarr
 from os import path
 
 
-def build_database(data_module, model, database_path, layer, n=30):
+def build_database(data_module, model, encoder, database_path, layer, n=30):
     """
     Builds a database of embeddings and gradients for all images in the data_path's training loader
     """
@@ -17,13 +17,13 @@ def build_database(data_module, model, database_path, layer, n=30):
     embeddings_zarr = path.join(database_path, "embs_array.zarr")
 
     data_loader = extract_data_loader(data_module, "fit")
-    collect_embeddings_and_gradients(model, data_loader, gradients_zarr, embeddings_zarr, layer=layer, end=n)
+    collect_embeddings_and_gradients(model, encoder, data_loader, gradients_zarr, embeddings_zarr, layer=layer, end=n)
     #  array is saved in a format of [embedding, gradient]
     print(f"Saved database to {database_path}")
 
 
-def collect_embeddings_and_gradients(model, data_loader, gradients_zarr_path, embeddings_zarr_path,
-                                     layer, end=1000):
+def collect_embeddings_and_gradients(model, encoder, data_loader, gradients_zarr_path, embeddings_zarr_path,
+                                     layer, end=None):
     # Encode all images in the data_loader using model, and return both images and encodings
     embeddings_zarr = None
     gradients_zarr = None
@@ -32,11 +32,11 @@ def collect_embeddings_and_gradients(model, data_loader, gradients_zarr_path, em
     i = 0
     for batch in tqdm(data_loader, desc="Encoding images", leave=False):
         imgs = batch[0]
-        if i == end:
+        if end and i == end:
             break
         i += 1
 
-        pooled_gradients, embeddings = GradCAM(model,layer, imgs, plot=False)
+        pooled_gradients, embeddings = GradCAM(model, encoder, layer, imgs, plot=False)
         # convert to numpy array
         pooled_gradients = pooled_gradients.detach().cpu().numpy()
         embeddings = embeddings.detach().cpu().numpy()
@@ -47,7 +47,7 @@ def collect_embeddings_and_gradients(model, data_loader, gradients_zarr_path, em
 
         # add batch dimension
         pooled_gradients = np.expand_dims(pooled_gradients, axis=0)
-        #embeddings = np.expand_dims(embeddings, axis=0)
+        # embeddings = np.expand_dims(embeddings, axis=0)
 
         if not embeddings_zarr:
             # initialize zarr arrays

@@ -1,5 +1,5 @@
 import torch
-
+from torch import nn
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -9,12 +9,11 @@ else:
     print("Using CPU")
 
 
-def load_vqvae(input_height=32, **kwargs):
+def load_vqvae(input_height=128,pretrained=False, **kwargs):
     from pl_bolts.models.autoencoders import VAE
-    vae = VAE(input_height=32, **kwargs)
-    print(VAE.pretrained_weights_available())
-    vae = vae.from_pretrained('cifar10-resnet18')
-
+    vae = VAE(input_height=input_height, **kwargs)
+    if pretrained:
+        vae = vae.from_pretrained('cifar10-resnet18')
     return vae
 
 
@@ -37,11 +36,8 @@ def load_swav():
 
 
 if __name__ == '__main__':
-    #simclr = load_simclr()
-    #last_conv_layer  = simclr.encoder.layer4[-1].conv3
-
+    # simclr = load_simclr()
+    # last_conv_layer  = simclr.encoder.layer4[-1].conv3
 
     vqvae = load_vqvae()
     print(vqvae)
-
-
