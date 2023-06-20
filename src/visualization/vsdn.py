@@ -6,6 +6,11 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 
+from datasets.datautils import sample_from_data_module
+from datasets.two4two import Two4TwoDataModule
+from models.VQVAE import VQVAE
+
+
 class HookModel(torch.nn.Module):
     def __init__(self, model, layers):
         super().__init__()
@@ -123,3 +128,29 @@ def plot_heatmaps(img, img_sim, heatmaps, heatmaps_sim, layers):
     plt.colorbar(mpl.cm.ScalarMappable(cmap='inferno'), ax=axarr.ravel().tolist(), shrink=0.8)
 
 
+if __name__ == '__main__':
+    data_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two"
+    work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
+    model_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/VAE.ckpt"
+    database_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/database"
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        print("Using GPU")
+    else:
+        device = torch.device("cpu")
+        print("Using CPU")
+
+    # img_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/test.png"
+    # img_tensor = load_img_to_batch(img_path)
+    model = VQVAE.load_from_checkpoint(model_path, map_location=device)
+    data_module = Two4TwoDataModule(data_dir=data_path, working_path=work_path, batch_size=4)
+
+    sample, _ = sample_from_data_module(data_module)
+
+    # plot real images
+    plt.figure(figsize=(10, 4))
+    from torchvision.utils import make_grid
+
+    plt.axis('off')
+    plt.imshow(make_grid(sample, normalize=True, value_range=(-1, 1), nrow=len(sample)).permute(1, 2, 0))

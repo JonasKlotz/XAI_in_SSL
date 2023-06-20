@@ -52,3 +52,16 @@ def load_img_to_batch(img_path):
     # convert to tensor
     img_tensor = transforms.ToTensor()(img).unsqueeze(0)
     return img_tensor
+
+
+def sample_from_data_module(data_module, stage="fit"):
+    """Samples a batch from the data module
+    Args:
+        data_module: the data module
+        stage: the stage of the data loader
+    Returns:
+        the batch
+    """
+    data_loader = extract_data_loader(data_module, stage)
+    batch = next(iter(data_loader))
+    return batch
