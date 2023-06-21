@@ -136,7 +136,9 @@ num_embeddings = 128  # 512
 commitment_cost = 0.25
 decay = 0.99
 learning_rate = 1e-3
-
+model = VQVAE(num_hiddens, num_residual_layers, num_residual_hiddens,
+                  num_embeddings, embedding_dim,
+                  commitment_cost, decay, input_channels=1)
 
 def train_with_datamodule(working_path, datamodule, model, max_epochs=50, model_name='vqvae'):
     """ Trains a VQ-VAE given dataloader.

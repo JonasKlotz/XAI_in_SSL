@@ -103,7 +103,7 @@ class TopKIntersection(Metric):
         top_k_binary_mask = top_k_binary_mask.astype(bool)
 
         # Top-k intersection.
-        tki = 1.0 / self.k * np.sum(np.logical_and(s, top_k_binary_mask))
+        tki = 1.0 / (self.k * np.sum(np.logical_and(s, top_k_binary_mask)))
 
         # Concept influence (with size of object normalised tki score).
         if self.concept_influence:

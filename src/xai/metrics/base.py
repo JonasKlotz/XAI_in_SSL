@@ -62,7 +62,7 @@ class Metric:
                     a list of Any with the evaluation scores of the concerned batch.
                 """
         self.last_results = [None for _ in x_batch]
-        for i in range(batch_size):
+        for i in range(x_batch.shape[0]):
             x = self.tensor_to_numpy(x_batch[i])
             y = self.tensor_to_numpy(y_batch[i]) if y_batch is not None else None
             a = self.tensor_to_numpy(a_batch[i]) if a_batch is not None else None

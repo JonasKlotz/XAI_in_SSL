@@ -1,3 +1,8 @@
+import sys
+
+# Adds the other directory to your python path.
+sys.path.append("/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/src")
+
 import os
 from os import path
 from typing import Optional
@@ -10,6 +15,7 @@ from skimage.transform import resize
 from datasets.datautils import extract_data_loader
 from datasets.two4two import Two4TwoDataModule
 from models.bolts import load_vqvae
+from visualization.plotting import plot_img_mask_heatmap
 from xai.embedded_gradcam.database import build_database
 from xai.embedded_gradcam.gradcam import generate_activations
 from xai.embedded_gradcam.helpers import _plot_grad_heatmap
@@ -46,7 +52,7 @@ def get_k_nearest_neighbours(embeddings, embeddings_db, k=1):
     return indices
 
 
-def explain_image(image_tensor, model, encoder, layer, embeddings_db, gradients_db, k=5, plot=True):
+def explain_image(image_tensor, model, encoder, layer, embeddings_db, gradients_db, k=5, plot=True, save_path=None):
     """Generates a heatmap for the given image tensor
     Args:
         image_tensor: the image tensor shape (b, c, h, w)
@@ -96,7 +102,7 @@ def explain_image(image_tensor, model, encoder, layer, embeddings_db, gradients_
     heatmap = resize(heatmap, dims)
 
     if plot:
-        _plot_grad_heatmap(heatmap)
+        _plot_grad_heatmap(heatmap, image_tensor=image_tensor, save_path=save_path)
 
     return heatmap
 
@@ -143,7 +149,7 @@ def explain_batch(
     # iterate over batch and generate heatmaps
     for i in range(x_batch.size()[0]):
         heatmap = explain_image(x_batch[i], model=model, encoder=encoder, layer=layer, embeddings_db=embeddings_db,
-                                gradients_db=gradients_db, k=10, plot=plot)
+                                gradients_db=gradients_db, k=2, plot=plot)
         heatmaps[i] = heatmap
 
     if save:
@@ -152,11 +158,18 @@ def explain_batch(
     return heatmaps
 
 
+def save_batches(x_batch, s_batch, y_batch, a_batch, work_path):
+    np.save(path.join(work_path, 'batches', "a_batch.npy"), a_batch)
+    np.save(path.join(work_path, 'batches', "x_batch.npy"), x_batch)
+    np.save(path.join(work_path, 'batches', "s_batch.npy"), s_batch)
+    np.save(path.join(work_path, 'batches', "y_batch.npy"), y_batch)
+
+
 if __name__ == '__main__':
-    data_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two"
-    work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
+    data_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two_small"
+    work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/gradcam"
     model_path = '/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/models/bolt_vae.ckpt'
-    database_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/database"
+    database_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/gradcam/database"
 
     # img_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/test.png"
     # img_tensor = load_img_to_batch(img_path)
@@ -169,9 +182,10 @@ if __name__ == '__main__':
     # layer_name = '_pre_vq_conv'
     # layer = getattr(model, layer_name)
 
-    build_database(data_module=data_module, model=model, encoder=encoder, database_path=database_path, layer=layer, n=25)
+    #build_database(data_module=data_module, model=model, encoder=encoder, database_path=database_path, layer=layer)
 
     embeddings_db, gradients_db = read_database(database_path)
+    print(embeddings_db.shape, gradients_db.shape)
 
     # load batch of 64 images from test set
     data_module = Two4TwoDataModule(data_dir=data_path, working_path=work_path, batch_size=64)
@@ -179,18 +193,24 @@ if __name__ == '__main__':
     x_batch, s_batch, y_batch = next(iter(data_loader))
 
     # get heatmaps for batch
-    a_batch = explain_batch(model,encoder, layer, embeddings_db, gradients_db, x_batch, save_path=work_path, plot=True)
+    a_batch = explain_batch(model, encoder, layer, embeddings_db, gradients_db, x_batch, save_path=work_path,
+                            plot=False)
+    # save all batches
+    save_batches(x_batch, s_batch, y_batch, a_batch, work_path)
 
-    # plot_img_mask_heatmap(x_batch[0], s_batch[0],  a_batch[0])
+    metric = TopKIntersection(k=500 , return_aggregate=True)
 
-    # convert all to numpy
+    # # convert all to numpy
     # img = x_batch[0].detach().cpu().numpy()
     # label = y_batch[0].detach().cpu().numpy()
     # mask = s_batch[0].detach().cpu().numpy()
     # heatmap = a_batch[0]
     # eval = metric.evaluate_instance(model, img, label, heatmap, mask)
+    # title = f"TopKIntersection: {eval}"
+    # plot_img_mask_heatmap(x_batch[0], s_batch[0], a_batch[0], title=title)
 
-    metric = TopKIntersection(k=1000, return_aggregate=True)
-    eval = metric(x_batch=x_batch, s_batch=s_batch, a_batch=a_batch)
-    print(eval)
+    batch_eval = metric(x_batch=x_batch, s_batch=s_batch, a_batch=a_batch)
+    title = f"TopKIntersection: {batch_eval}"
+    plot_img_mask_heatmap(x_batch[0], s_batch[0], a_batch[0], title=title)
+    print(batch_eval)
     print("done")

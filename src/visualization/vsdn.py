@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 from PIL import Image
@@ -8,15 +9,24 @@ import torch
 import numpy as np
 from matplotlib import pyplot as plt
 from torchvision.transforms import transforms
-
+import zarr
 from datasets.datautils import sample_from_data_module, extract_data_loader, embed_imgs, load_img_to_batch
 from datasets.two4two import Two4TwoDataModule
 from models.VQVAE import VQVAE
 from models.bolts import load_vqvae
+from visualization.plotting import visualize_reconstructions
+from xai.metrics.top_k_intersections import TopKIntersection
+
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    print("Using GPU")
+else:
+    device = torch.device("cpu")
+    print("Using CPU")
 
 
 class HookModel(torch.nn.Module):
-    def __init__(self, model, layers:List[torch.nn.Module]):
+    def __init__(self, model, layers: List[torch.nn.Module]):
         super().__init__()
         self.gradients = None
         self.tensorhook = []
@@ -26,7 +36,8 @@ class HookModel(torch.nn.Module):
         self.pretrained = model
 
         for layer in layers:
-            layer.register_forward_hook(self.forward_hook())
+            h  = layer.register_forward_hook(self.forward_hook())
+            self.layerhook.append(h)
 
         for p in self.pretrained.parameters():
             p.requires_grad = True
@@ -48,6 +59,15 @@ class HookModel(torch.nn.Module):
         self.selected_out = []
         out = self.pretrained(x)
         return out, self.selected_out
+
+    def clear_hooks(self):
+        for hook in self.tensorhook:
+            hook.remove()
+        self.tensorhook = []
+        self.selected_out = []
+
+        for l in self.layerhook:
+            l.remove()
 
 
 def scale_heatmap(size, heatmap, cmap):
@@ -85,23 +105,36 @@ def compute_spatial_similarity(conv1, conv2):
     return similarity1, similarity2
 
 
-def get_heatmaps(model, img1, img2, device, transform=None):
-    if transform:
-        img1 = transform(img1)
-        img2 = transform(img2)
+def preprocess_img(img, transform=None, device=None):
+    if isinstance(img, np.ndarray):
+        img = torch.from_numpy(img)
 
-    _, activations1 = model(img1.to(device))
-    _, activations2 = model(img2.to(device))
+    if len(img.shape) == 3:
+        img = img.unsqueeze(0)
+
+    if transform:
+        img = transform(img)
+    if device:
+        img = img.to(device)
+
+    return img
+
+
+def get_heatmaps(model, img1, img2, device, transform=None):
+    img1 = preprocess_img(img1, transform, device).double()
+    img2 = preprocess_img(img2, transform, device).double()
+    model = model.to(device)
+    model = model.double()
+
+    _, activations1 = model(img1)
+    _, activations2 = model(img2)
     heatmaps1 = []
     heatmaps2 = []
-    print(len(activations1), activations1[0].shape)
     for a1, a2 in zip(activations1, activations2):
         a1 = a1.detach().squeeze(0).permute(1, 2, 0).cpu().numpy()
         a1 = a1.reshape(-1, a1.shape[-1])
         a2 = a2.detach().squeeze(0).permute(1, 2, 0).cpu().numpy()
         a2 = a2.reshape(-1, a2.shape[-1])
-
-        print(a1.shape, a2.shape)
 
         h1, h2 = compute_spatial_similarity(a1, a2)
         h1 -= np.min(h1)
@@ -118,109 +151,116 @@ def get_heatmaps(model, img1, img2, device, transform=None):
     return heatmaps1, heatmaps2
 
 
-def plot_heatmaps(img, img_sim, heatmaps, heatmaps_sim, layers):
+def plot_heatmaps(img, img_sim, heatmaps, heatmaps_sim, layer_names):
     f, axarr = plt.subplots(2, len(heatmaps) + 1, figsize=(24, 12))
+    fontsize = 24
     axarr[0, 0].imshow(np.array(img))
     axarr[0, 0].axis('off')
+    axarr[0, 0].set_title(f'Queried Image', fontsize=fontsize)
+
     axarr[1, 0].imshow(img_sim)
     axarr[1, 0].axis('off')
+    axarr[1, 0].set_title(f'Most Similar Image', fontsize=fontsize)
 
-    for i, (h1, h2, l) in enumerate(zip(heatmaps, heatmaps_sim, layers)):
+    for i, (h1, h2, l) in enumerate(zip(heatmaps, heatmaps_sim, layer_names)):
         axarr[0, i + 1].imshow(put_heatmap(np.array(img), h1, cmap=cv2.COLORMAP_INFERNO, alpha=180))
         axarr[0, i + 1].axis('off')
+        axarr[0, i + 1].set_title(f'Layer {l}',     fontsize=fontsize)
 
-        axarr[1, i + 1].set_title(f'Layer {l}', pad=90, size=34)
         axarr[1, i + 1].imshow(put_heatmap(np.array(img_sim), h2, cmap=cv2.COLORMAP_INFERNO, alpha=180))
         axarr[1, i + 1].axis('off')
+        axarr[1, i + 1].set_title(f'Layer {l}', fontsize=fontsize)
+
+
     plt.tight_layout()
-    plt.colorbar(mpl.cm.ScalarMappable(cmap='inferno'), ax=axarr.ravel().tolist(), shrink=0.8)
+    plt.colorbar(mpl.cm.ScalarMappable(cmap='inferno'), ax=axarr.ravel().tolist())
+
     plt.show()
 
 
-if __name__ == '__main__':
-    data_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two"
-    work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
-    model_path = '/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/models/bolt_vae.ckpt'
-    database_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/database"
+def explain_image(query_img, ds_embeddings, ds_imgs, encoder, device, plot=False):
+    encoder = encoder.double()
+    query_img = query_img.double()
 
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        print("Using GPU")
-    else:
-        device = torch.device("cpu")
-        print("Using CPU")
-
-    img_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/test.png"
-    img_tensor = load_img_to_batch(img_path)
-    # model = VQVAE.load_from_checkpoint(model_path, map_location=device)
-    model = load_vqvae(input_height=128, input_width=128, input_channels=3)
-    model = model.load_from_checkpoint(model_path, map_location=device)
-
-
-    encoder = model.encoder
-
-    data_module = Two4TwoDataModule(data_dir=data_path, working_path=work_path, batch_size=4)
-    transformations = data_module.transform
-
-    query_imgs, _, _ = sample_from_data_module(data_module, stage='test')
-    query_img = query_imgs[0]
-    # expand dims
-    query_img = query_img.unsqueeze(0)
-    # # plot real images
-    # plt.figure(figsize=(10, 4))
-    from torchvision.utils import make_grid
-
-    #
-    # plt.axis('off')
-    # plt.imshow(make_grid(query_imgs, normalize=True, nrow=len(query_imgs)).permute(1, 2, 0))
-    # plt.show()
-    data_loader = extract_data_loader(data_module)
-    ds_imgs, ds_embeddings = embed_imgs(encoder, data_loader, device=device, num_batches=15)
-    print(ds_imgs.shape, ds_embeddings.shape)
-
-    # embed query imgs
+    # embed query img
     with torch.no_grad():
         query_embeddings = encoder(query_img.to(device)).cpu().numpy()
-
     from sklearn.metrics.pairwise import cosine_similarity
-
     # calc cosine similarity between query imgs and dataset images
-    most_similar = cosine_similarity(query_embeddings, ds_embeddings)
-    id_most_similar = np.argsort(-most_similar, axis=1)[:, 0]
+    most_similar = cosine_similarity(query_embeddings, ds_embeddings).squeeze(0)
+    id_most_similar = np.argsort(-most_similar)[0]
     most_sim_img = ds_imgs[id_most_similar]
-
-    # plt.figure(figsize=(10, 5))
-    # plt.axis('off')
-    # plt.title('Query', fontsize=20, loc='left')
-    # plt.title('Most similar', fontsize=20, loc='right')
-    # plt.imshow(
-    #     make_grid(torch.cat([query_img, most_sim_img]), normalize=True, nrow=2).permute(1, 2, 0))
-    # plt.show()
 
     # hook model
     layers = [encoder.layer4[1].conv2]  # last conv layer?
     hook_model = HookModel(encoder, layers=layers).to(device)
-
     # # denormalize tensors and convert to PIL images
     # query_img_pil = transforms.ToPILImage()((query_img.squeeze(0) + 1) / 2)
     # most_sim_img_pil = transforms.ToPILImage()((most_sim_img.squeeze(0) + 1) / 2)
-
     heatmaps, heatmaps_sim = get_heatmaps(hook_model, query_img, most_sim_img, device, transform=None)
-    # remove batch dim for images
-    query_img = query_img.squeeze(0)
-    query_img -= query_img.min()
-    query_img /= query_img.max()
 
-    most_sim_img = most_sim_img.squeeze(0)
-    most_sim_img -= most_sim_img.min()
-    most_sim_img /= most_sim_img.max()
-
-
-
-    query_img_pil = transforms.ToPILImage()(query_img)
-    most_sim_img_pil = transforms.ToPILImage()(most_sim_img)
-    plot_heatmaps(query_img_pil, most_sim_img_pil, heatmaps, heatmaps_sim, layers)
+    query_img_pil = post_process_img(query_img)
+    most_sim_img_pil = post_process_img(most_sim_img)
+    #heatmaps = [post_process_img(h) for h in heatmaps]
+    if plot:
+        plot_heatmaps(query_img_pil, most_sim_img_pil, heatmaps, heatmaps_sim, layer_names=['encoder.4.1.conv2', 'encoder.4.1.conv2'])
+    hook_model.clear_hooks()
+    return heatmaps, heatmaps_sim
 
 
+def post_process_img(img_tensor):
+    if len(img_tensor.shape) == 4:
+        img_tensor = img_tensor.squeeze(0)
+    img_tensor -= img_tensor.min()
+    img_tensor /= img_tensor.max()
+    if isinstance(img_tensor, np.ndarray):
+        img_tensor = torch.from_numpy(img_tensor)
+    return transforms.ToPILImage()(img_tensor)
+
+
+def load_zarr_embeddings(database_path, names=None):
+    if names == None:
+        names = ['embeddings', 'images']
+    return [zarr.open(os.path.join(database_path, name + '.zarr')) for name in names]
+
+
+if __name__ == '__main__':
+    data_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two"
+    work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/vsdn"
+    model_path = '/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/models/bolt_vae.ckpt'
+    database_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/vsdn/database"
+
+    # model = VQVAE.load_from_checkpoint(model_path, map_location=device)
+    model = load_vqvae(input_height=128, input_channels=3)
+    model = model.load_from_checkpoint(model_path, map_location=device)
+    encoder = model.encoder
+    data_module = Two4TwoDataModule(data_dir=data_path, working_path=work_path, batch_size=32)
+
+    # data_loader = extract_data_loader(data_module)
+    # ds_imgs, ds_embeddings = embed_imgs(encoder, data_loader, database_path, device=device, num_batches=1)
+
+    # load embeddings from database
+    # get query images
+    x_batch, s_batch, y_batch = sample_from_data_module(data_module, stage='test')
+
+    # visualize_reconstructions(model, query_imgs[:4])
+    from skimage.transform import resize
+    a_batch = np.zeros(shape=(len(x_batch), 128, 128))
+
+    for i in range(len(x_batch[:2])):
+        query_img = x_batch[i].unsqueeze(0)
+
+        ds_imgs, ds_embeddings = load_zarr_embeddings(database_path)
+        heatmaps, sim_heatmaps=  explain_image(query_img, ds_imgs, ds_embeddings, encoder, device, plot=True)
+        heatmap = heatmaps[0]
+        heatmap = resize(heatmap, (128, 128))
+        a_batch[i] = heatmap
+
+    # save a_batch
+    np.save(work_path + '/batches/' + 'a_batch.npy', a_batch)
+    metric = TopKIntersection(k=1000, return_aggregate=True)
+
+    batch_eval = metric(x_batch=x_batch, s_batch=s_batch, a_batch=a_batch)
+    print(batch_eval)
 
 
