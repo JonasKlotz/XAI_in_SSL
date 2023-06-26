@@ -57,7 +57,7 @@ def load_img_to_batch(img_path):
     return img_tensor
 
 
-def sample_from_data_module(data_module, stage="fit"):
+def sample_from_data_module(data_module: object, stage: object = "fit") -> object:
     """Samples a batch from the data module
     Args:
         data_module: the data module
@@ -89,6 +89,10 @@ def embed_imgs(encoder, data_loader, database_path, num_batches=100, device=None
 
         with torch.no_grad():
             embeddings: torch.Tensor = encoder(imgs)
+
+        if isinstance(embeddings, list):
+            embeddings = embeddings[0]
+
         embeddings = embeddings.detach().numpy()
         imgs = imgs.detach().numpy()
 

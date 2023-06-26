@@ -9,18 +9,27 @@ else:
     print("Using CPU")
 
 
-def load_vqvae(input_height=128,pretrained=False, **kwargs):
+def load_vae(input_height: int = 32, pretrained: bool = False, from_pretrained:str = 'cifar10-resnet18',
+               **kwargs: object) -> "L.LightningModule":
+    """
+    Load a VAE model from PyTorch Lightning Bolts
+
+    :param pretrained:
+    :param kwargs:input_height: int = 32,
+    :return:
+    """
     from pl_bolts.models.autoencoders import VAE
-    vae = VAE(input_height=input_height, **kwargs)
+    vae = VAE(input_height, **kwargs)
+    print(vae.pretrained_urls)
     if pretrained:
-        vae = vae.from_pretrained('cifar10-resnet18')
+        vae = vae.from_pretrained(from_pretrained)
     return vae
 
 
 def load_simclr():
     from pl_bolts.models.self_supervised import SimCLR
     simclr_weight_path = 'https://pl-bolts-weights.s3.us-east-2.amazonaws.com/simclr/bolts_simclr_imagenet/simclr_imagenet.ckpt'
-    simclr = SimCLR.load_from_checkpoint(simclr_weight_path, strict=False)
+    simclr = SimCLR.load_from_checkpoint(simclr_weight_path, strict=False, map_location=device)
     simclr = simclr.to(device)
     simclr.eval()
     return simclr

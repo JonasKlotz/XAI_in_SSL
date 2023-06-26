@@ -75,7 +75,7 @@ class Two4TwoDataset(torch.utils.data.Dataset):
 
 
 class Two4TwoDataModule(L.LightningDataModule):
-    def __init__(self, data_dir: str = "./", working_path: str = None, batch_size: int = 32):
+    def __init__(self, data_dir: str = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two", working_path: str = None, batch_size: int = 32, resize: int = None):
         super().__init__()
         self.two2two__predict = None
         self.two2two_val = None
@@ -85,9 +85,14 @@ class Two4TwoDataModule(L.LightningDataModule):
         self.working_path = working_path
         self.batch_size = batch_size
         self.num_workers = 0
-        self.transform = transforms.Compose(
-            [transforms.ToPILImage(), transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-        self.mask_transform = transforms.Compose([transforms.ToPILImage(), transforms.ToTensor()])
+        normal_transforms = [transforms.ToPILImage(), transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+        if resize:
+            normal_transforms += [transforms.Resize(resize)]
+        self.transform = transforms.Compose(normal_transforms)
+        mask_transforms = [transforms.ToPILImage(), transforms.ToTensor()]
+        if resize:
+            mask_transforms += [transforms.Resize(resize)]
+        self.mask_transform = transforms.Compose(mask_transforms)
 
     def prepare_data(self):
         # extract ?
