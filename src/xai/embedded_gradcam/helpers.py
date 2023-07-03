@@ -1,10 +1,5 @@
-import numpy as np
-import plotly.express as px
 import torch
 import matplotlib.pyplot as plt
-
-from visualization.vsdn import put_heatmap
-
 
 def _plot_grad_heatmap_and_img(heatmap, img_tensor, title="Image mask and heatmap", titles=None,
                                save_path=None):
