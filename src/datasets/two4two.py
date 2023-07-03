@@ -59,7 +59,7 @@ class Two4TwoDataset(torch.utils.data.Dataset):
 
         image = self.transform(image)
 
-        sample = (image / 255., mask, label)
+        sample = (image / 255.,( mask, label))
 
         return sample
 

@@ -8,6 +8,9 @@ from torchvision import transforms
 from tqdm import tqdm
 import zarr
 
+from datasets.cifar10 import load_cifar10_data_module
+from datasets.two4two import Two4TwoDataModule
+
 
 def extract(tar_file, path):
     """Extracts the tar file to the path specified
@@ -109,3 +112,14 @@ def embed_imgs(encoder, data_loader, database_path, num_batches=100, device=None
         if num_batches and i == num_batches:
             break
     return (images_zarr, embeddings_zarr)
+
+
+def setup_datamodule(dataset_name=None, batch_size=1, resize=None):
+    if dataset_name == 'two4two':
+        data_module = Two4TwoDataModule(batch_size=batch_size, resize=resize)
+        return data_module, None
+    elif dataset_name == 'cifar10':
+        data_module, reverse_transformation = load_cifar10_data_module(batch_size=batch_size, resize=resize)
+        return data_module, reverse_transformation
+    else:
+        raise NotImplementedError(f"Dataset {dataset_name} not implemented")
