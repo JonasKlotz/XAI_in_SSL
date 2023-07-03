@@ -4,6 +4,9 @@ import torch
 import torchvision
 from skimage import feature, transform
 import torch.nn.functional as F
+from torchvision.transforms import transforms
+
+from models.bolts import setup_model
 
 
 def compare_imgs(img1, img2, title_prefix=""):
@@ -77,22 +80,68 @@ def plot_heatmap(heatmap, original, ax, cmap='RdBu_r',
         ax.imshow(overlay, extent=extent, interpolation='none', cmap=cmap_original, alpha=alpha)
 
 
-def visualize_reconstructions(model, input_imgs):
+def visualize_reconstructions(model, input_imgs, title="Reconstructed", save_path=None, model_name=None, reverse_transform=None):
+    """
+    Visualize the reconstructions of the given input images.
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Model to use for the reconstruction.
+    input_imgs : torch.Tensor
+        Input images to reconstruct. A batch of images is expected. The
+        expected shape is [batch_size, channels, height, width].
+    title : str
+        Title of the plot.
+    save_path : str
+        Path to save the plot to.
+    model_name : str
+        Name of the model. Used for the plot title.
+    """
     # Reconstruct images
     model.eval()
     with torch.no_grad():
         reconst_imgs = model(input_imgs.to(model.device))
     reconst_imgs = reconst_imgs.cpu()
-    # Plotting
-    imgs = torch.stack([input_imgs, reconst_imgs], dim=1).flatten(0, 1)
-    grid = torchvision.utils.make_grid(imgs, nrow=4, normalize=True)
-    grid = grid.permute(1, 2, 0)
-    plt.figure(figsize=(7, 4.5))
-    plt.title("Reconstructed")
-    plt.imshow(grid)
-    plt.axis("off")
-    plt.show()
 
+    # Plotting
+    _plot_reconstruction(input_imgs, reconst_imgs, unnormalize=reverse_transform)
+    # imgs = torch.stack([input_imgs, reconst_imgs], dim=1).flatten(0, 1)
+    # grid = torchvision.utils.make_grid(imgs, nrow=len(input_imgs), normalize=True)
+    # grid = grid.permute(1, 2, 0)
+    # plt.figure(figsize=(14, 9), dpi=100)
+    # plt.title(title + f" ({model_name})" if model_name else title)
+    # plt.imshow(grid)
+    # plt.axis("off")
+    # plt.show()
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.close()
+
+
+def _plot_reconstruction(X, X_hat, unnormalize):
+    n = min(X.size(0), 8)
+    fig, axes = plt.subplots(2, n, figsize=(10, 2))
+    for i in range(n):
+        ax_real = axes[0][i]
+        ax_real.imshow(np.transpose(unnormalize(X[i]), (1, 2, 0)))
+        ax_real.get_xaxis().set_visible(False)
+        ax_real.get_yaxis().set_visible(False)
+
+        ax_gen = axes[1][i]
+        unnormalized_image = unnormalize(X_hat[i])
+        # min max normalization
+        unnormalized_image = (unnormalized_image - unnormalized_image.min()) / (
+                    unnormalized_image.max() - unnormalized_image.min())
+
+        unnormalized_image = np.transpose(unnormalized_image.detach().numpy(), (1, 2, 0))
+
+        ax_gen.imshow(unnormalized_image)
+        ax_gen.get_xaxis().set_visible(False)
+        ax_gen.get_yaxis().set_visible(False)
+
+    plt.tight_layout()
+
+    plt.show()
 
 def plot_img_mask_heatmap(img, mask, heatmap, title="Image with Heatmap", save=False, save_path=None, titles=None):
     img = make_img_plotable(img)
@@ -130,7 +179,7 @@ def plot_img_mask_heatmap(img, mask, heatmap, title="Image with Heatmap", save=F
     plt.show()
 
 
-def plot_heatmap_and_img(heatmap, img_tensor, title="Image with Heatmap", save=False, save_path=None):
+def plot_heatmap_and_img(heatmap, img_tensor, title="Image with Heatmap", save_path=None, plot=True):
     img = make_img_plotable(img_tensor)
     heatmap = make_img_plotable(heatmap)
 
@@ -153,11 +202,11 @@ def plot_heatmap_and_img(heatmap, img_tensor, title="Image with Heatmap", save=F
     cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom", fontsize=20)
 
     plt.suptitle(title, fontsize=34, y=0.95)
-
-    if save and save_path is not None:
+    if plot:
+        plt.show()
+    if save_path is not None:
         plt.savefig(save_path, dpi=300)
-        return
-    plt.show()
+        plt.close()
 
 
 def make_img_plotable(img):
@@ -272,3 +321,49 @@ def make_img_plotable(img):
 #     cbar.set_ticks([])
 #
 #     plt.show()
+
+
+if __name__ == '__main__':
+    from pl_bolts.datamodules import CIFAR10DataModule
+    from pl_bolts.models.autoencoders import VAE
+    from pytorch_lightning import Trainer
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import torch
+    from torchvision import transforms
+
+    torch.manual_seed(17)
+    np.random.seed(17)
+
+
+    model_name = "vae"
+    model, encoder, layers = setup_model(model_name)
+
+
+    dm = CIFAR10DataModule("/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/cifar10", normalize=True)
+    dm.prepare_data()
+    dm.setup("fit")
+    dataloader = dm.train_dataloader()
+
+    print(dm.default_transforms())
+    mean = torch.tensor(dm.default_transforms().transforms[1].mean)
+    std = torch.tensor(dm.default_transforms().transforms[1].std)
+    unnormalize = transforms.Normalize((-mean / std).tolist(), (1.0 / std).tolist())
+
+    X, _ = next(iter(dataloader))
+    model.eval()
+    X_hat = model(X)
+
+    fig, axes = plt.subplots(2, 10, figsize=(10, 2))
+    for i in range(10):
+        ax_real = axes[0][i]
+        ax_real.imshow(np.transpose(unnormalize(X[i]), (1, 2, 0)))
+        ax_real.get_xaxis().set_visible(False)
+        ax_real.get_yaxis().set_visible(False)
+
+        ax_gen = axes[1][i]
+        ax_gen.imshow(np.transpose(unnormalize(X_hat[i]).detach().numpy(), (1, 2, 0)))
+        ax_gen.get_xaxis().set_visible(False)
+        ax_gen.get_yaxis().set_visible(False)
+
+    plt.show()

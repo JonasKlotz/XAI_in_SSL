@@ -12,13 +12,8 @@ from torchvision.transforms import transforms
 import skimage.transform as skt
 import zarr
 
-from datasets.cifar10 import load_cifar10_data_module
-from datasets.datautils import sample_from_data_module, extract_data_loader, embed_imgs, load_img_to_batch
-from datasets.two4two import Two4TwoDataModule
-from models.VQVAE import VQVAE
-from models.bolts import  load_simclr, load_swav, load_vae
-from visualization.plotting import visualize_reconstructions
-from xai.metrics.top_k_intersections import TopKIntersection
+from datasets.datautils import sample_from_data_module, extract_data_loader, embed_imgs, setup_datamodule
+from models.bolts import setup_model
 from sklearn.metrics.pairwise import cosine_similarity
 
 if torch.cuda.is_available():
@@ -259,32 +254,6 @@ def explain_batch(x_batch, encoder, layers, database_path, save_path=None, devic
     return a_batch
 
 
-def setup_model(name=None):
-    if name == 'simclr':
-        model = load_simclr()
-        encoder = model.encoder
-        layers = [encoder.layer4[1].conv2]  # , encoder.fc]
-    elif name == 'vae':
-        model = load_vae(input_height=128, input_channels=3)
-        encoder = model.encoder
-        layers = [encoder.layer4[1].conv1]  # , encoder.fc]
-    elif name == 'swav':
-        encoder = load_swav()
-        layers = [encoder.model.layer4[2].conv3]  # , model.model.projection_head[0]]  # SWAV layer around pooling
-
-    else:
-        raise ValueError('name must be either simclair, swav or vae')
-    return encoder, layers
-
-
-def setup_datamodule(dataset_name=None, batch_size=1):
-    if dataset_name == 'two4two':
-        data_module = Two4TwoDataModule(batch_size=batch_size)
-    elif dataset_name == 'cifar10':
-        data_module, transforms = load_cifar10_data_module(batch_size=batch_size)
-    return data_module
-
-
 def generate_databases(encoder, datamodule_name, database_path, device=None, num_batches=10000):
     data_module = setup_datamodule(dataset_name=datamodule_name, batch_size=1)
 
@@ -294,6 +263,7 @@ def generate_databases(encoder, datamodule_name, database_path, device=None, num
 
 
 if __name__ == '__main__':
+    # todo fix paths like in gradcam
     model_name = 'simclr'
     datamodule_name = 'cifar10'
     work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/vsdn"
