@@ -4,6 +4,7 @@ import os.path
 
 import torch
 from PIL import Image
+from lightly.transforms import SimCLRTransform
 from torchvision import transforms
 from tqdm import tqdm
 import zarr
@@ -114,12 +115,23 @@ def embed_imgs(encoder, data_loader, database_path, num_batches=100, device=None
     return (images_zarr, embeddings_zarr)
 
 
-def setup_datamodule(dataset_name=None, batch_size=1, resize=None):
+def setup_datamodule(dataset_name=None, batch_size=1, model_name=""):
+
     if dataset_name == 'two4two':
-        data_module = Two4TwoDataModule(batch_size=batch_size, resize=resize)
+        if model_name == 'vae':
+            resize = 32
+            data_module = Two4TwoDataModule(batch_size=batch_size, resize=resize)
+        elif model_name=='simclr_pretrained':
+            transform = SimCLRTransform(
+                input_size=128, vf_prob=0.5, rr_prob=0.5, cj_prob=0.0, random_gray_scale=0.0
+            )
+            data_module = Two4TwoDataModule(batch_size=batch_size, transform=transform)
+        else:
+            data_module = Two4TwoDataModule(batch_size=batch_size)
+
         return data_module, None
     elif dataset_name == 'cifar10':
-        data_module, reverse_transformation = load_cifar10_data_module(batch_size=batch_size, resize=resize)
+        data_module, reverse_transformation = load_cifar10_data_module(batch_size=batch_size)
         return data_module, reverse_transformation
     else:
         raise NotImplementedError(f"Dataset {dataset_name} not implemented")

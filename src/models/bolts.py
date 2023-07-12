@@ -44,7 +44,7 @@ def load_swav():
     swav.eval()
     return swav
 
-def setup_model(name=None, input_height=32):
+def setup_model(name=None, input_height=32, model_path=None):
     if name == 'simclr':
         model = load_simclr()
         encoder = model.encoder

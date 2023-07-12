@@ -1,10 +1,16 @@
 import sys
 
+from zarr.errors import ArrayNotFoundError
+
+# Adds the other directory to your python path.
+sys.path.append("/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/src")
+
+from models.bolts import setup_model
 from xai.embedded_gradcam.gradcam import GradCAM
 
 import numpy as np
 from tqdm import tqdm
-from datasets.datautils import extract_data_loader
+from datasets.datautils import extract_data_loader, setup_datamodule
 import zarr
 from os import path
 
@@ -75,7 +81,50 @@ def collect_embeddings_and_gradients(model, encoder, data_loader, gradients_zarr
 def read_database(database_path):
     gradients_zarr = path.join(database_path, "grad_array.zarr")
     embeddings_zarr = path.join(database_path, "embs_array.zarr")
-
-    gradients = zarr.open_array(gradients_zarr, mode='r')
-    embeddings = zarr.open_array(embeddings_zarr, mode='r')
+    try:
+        gradients = zarr.open_array(gradients_zarr, mode='r')
+        embeddings = zarr.open_array(embeddings_zarr, mode='r')
+    except ArrayNotFoundError as e:
+        print(e)
+        print(f"Failed to read database from database_path: {database_path}")
+        raise e
     return embeddings, gradients
+
+
+def build_all_databases(base_path, model_names, dataset_names, end=5000):
+
+    for dataset_name in dataset_names:
+
+        for model_name in model_names:
+            database_path = path.join(base_path, dataset_name, model_name, "database")
+            batch_size = 1 if model_name == "vae" else 2
+
+            model, encoder, layers = setup_model(model_name)
+            layer = layers[0]
+
+            ###################################################################################################################
+            data_module, reverse_transform = setup_datamodule(dataset_name, batch_size=batch_size,
+                                                              model_name=model_name)
+            try:
+                gradients_zarr, embeddings_zarr = build_database(data_module=data_module,
+                                                                 model=model,
+                                                                 encoder=encoder,
+                                                                 database_path=database_path,
+                                                                 layer=layer,
+                                                                 end=end,
+                                                                 model_type=model_name)
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt")
+                exit(0)
+            except Exception as e:
+                print(f"Failed to build database for {model_name} on {dataset_name}")
+                print(e)
+                continue
+
+
+if __name__ == "__main__":
+    base_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/gradcam"
+
+    model_names = ["simclr", "vae",]
+    dataset_names =  ["cifar10", "two4two"]#["two4two", "cifar10"]
+    build_all_databases(base_path, model_names, dataset_names, end=500)

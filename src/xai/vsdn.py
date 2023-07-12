@@ -263,21 +263,23 @@ def generate_databases(encoder, datamodule_name, database_path, device=None, num
 
 
 if __name__ == '__main__':
-    # todo fix paths like in gradcam
-    model_name = 'simclr'
-    datamodule_name = 'cifar10'
-    work_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/vsdn"
-    database_path = work_path + f"/database/cifar10/{model_name}"
+    base_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/vsdn"
+    model_name = "simclr"  # "simclr" "vae" "swav"
+    dataset_name = "two4two"  # "two4two"#"cifar10"
+    work_path = os.path.join(base_path, dataset_name, model_name)
+    database_path = os.path.join(work_path, "database")
+    plot_path = os.path.join(work_path, "plots")
+
 
     # load model
-    encoder, layers = setup_model(name=model_name)
+    model, encoder, layers = setup_model(name=model_name)
     # data_module = setup_datamodule(dataset_name=datamodule_name, batch_size=1)
     #
     # data_loader = extract_data_loader(data_module)
     # ds_imgs, ds_embeddings = embed_imgs(encoder, data_loader, database_path, device=device, num_batches=10000)
 
-    data_module = setup_datamodule(dataset_name=datamodule_name, batch_size=4)
-    x_batch, _ = sample_from_data_module(data_module, stage='test')
+    data_module, _ = setup_datamodule(dataset_name=dataset_name, batch_size=4)
+    x_batch, s_batch, labels = sample_from_data_module(data_module, stage='test')
     a_batch = explain_batch(x_batch=x_batch, encoder=encoder, layers=layers, database_path=database_path,
                             save_path=work_path, device=device, plot=True)
 

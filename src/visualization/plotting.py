@@ -1,3 +1,4 @@
+import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -80,7 +81,8 @@ def plot_heatmap(heatmap, original, ax, cmap='RdBu_r',
         ax.imshow(overlay, extent=extent, interpolation='none', cmap=cmap_original, alpha=alpha)
 
 
-def visualize_reconstructions(model, input_imgs, title="Reconstructed", save_path=None, model_name=None, reverse_transform=None):
+def visualize_reconstructions(model, input_imgs, title="Reconstructed", save_path=None, model_name=None,
+                              reverse_transform=None):
     """
     Visualize the reconstructions of the given input images.
     Parameters
@@ -131,7 +133,7 @@ def _plot_reconstruction(X, X_hat, unnormalize):
         unnormalized_image = unnormalize(X_hat[i])
         # min max normalization
         unnormalized_image = (unnormalized_image - unnormalized_image.min()) / (
-                    unnormalized_image.max() - unnormalized_image.min())
+                unnormalized_image.max() - unnormalized_image.min())
 
         unnormalized_image = np.transpose(unnormalized_image.detach().numpy(), (1, 2, 0))
 
@@ -142,6 +144,7 @@ def _plot_reconstruction(X, X_hat, unnormalize):
     plt.tight_layout()
 
     plt.show()
+
 
 def plot_img_mask_heatmap(img, mask, heatmap, title="Image with Heatmap", save=False, save_path=None, titles=None):
     img = make_img_plotable(img)
@@ -157,7 +160,6 @@ def plot_img_mask_heatmap(img, mask, heatmap, title="Image with Heatmap", save=F
         hm = axarr[i].imshow(image)
         axarr[i].axis('off')
         axarr[i].set_title(titles[i], fontsize=fontsize)
-
 
     from mpl_toolkits.axes_grid1 import make_axes_locatable
     divider = make_axes_locatable(axarr[2])
@@ -215,6 +217,9 @@ def make_img_plotable(img):
     """
     if isinstance(img, torch.Tensor):
         img = img.detach().cpu().numpy()
+    if img.shape[0] == 1:
+        img = np.squeeze(img, axis=0)
+    if img.shape[0] == 3:
         img = np.transpose(img, (1, 2, 0))
     img -= np.min(img)
     img /= np.max(img)
@@ -323,47 +328,65 @@ def make_img_plotable(img):
 #     plt.show()
 
 
+def convert_batches_to_img_list(batches, n):
+    images = []
+    for img_index in range(n):
+        image_tuple = []
+        for batch in batches:
+            img = batch[img_index]
+            img = make_img_plotable(img)
+            image_tuple.append(img)
+        images.append(image_tuple)
+    return images
+
+
+def plot_batches(batches, is_heatmap, n=5, main_title="Images and Masks", titles=None, plot = True, save_path = None):
+    if titles is None:
+        titles = ["Image" if not is_heatmap[i] else "Heatmap" for i in range(len(is_heatmap))]
+    # convert batches to images
+    images = convert_batches_to_img_list(batches, n)
+    fontsize = 14
+    matplotlib.rcParams['image.cmap'] = 'bwr'
+    figsize = (3 * n, 3 * len(batches))
+    # create subplots
+    fig, axarr = plt.subplots(nrows=len(batches), ncols=n, figsize=figsize)
+    # plot images
+    for outer_index, img_tuple in enumerate(images):
+        for inner_index, img in enumerate(img_tuple):
+            hm = axarr[inner_index, outer_index].imshow(img)
+            axarr[inner_index, outer_index].axis('off')
+            axarr[inner_index, outer_index].set_title(titles[inner_index], fontsize=fontsize)
+
+            if is_heatmap[inner_index]:
+                # Create colorbar
+                from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+                divider = make_axes_locatable(axarr[inner_index, outer_index])
+                cax = divider.append_axes("right", size="5%", pad=0.05)
+
+                # Create colorbar
+                cbarlabel = "Importance"
+                cbar = axarr[inner_index, outer_index].figure.colorbar(hm, ax=axarr[inner_index, outer_index], cax=cax,
+                                                                       cmap='hot')
+                cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom", fontsize=fontsize)
+    plt.suptitle(main_title, fontsize=24, y=0.95)
+    plt.tight_layout()
+    if plot:
+        plt.show()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300)
+        plt.close()
+
+
 if __name__ == '__main__':
-    from pl_bolts.datamodules import CIFAR10DataModule
-    from pl_bolts.models.autoencoders import VAE
-    from pytorch_lightning import Trainer
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import torch
-    from torchvision import transforms
+    batch_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/gradcam/cifar10/simclr/batches"
 
-    torch.manual_seed(17)
-    np.random.seed(17)
+    # read a batch and x batch in numpy
+    a_batch = np.load(batch_path + "/a_batch.npy")
+    x_batch = np.load(batch_path + "/x_batch.npy")
 
+    n = 2  # number of images from batch to be visualized
 
-    model_name = "vae"
-    model, encoder, layers = setup_model(model_name)
-
-
-    dm = CIFAR10DataModule("/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/cifar10", normalize=True)
-    dm.prepare_data()
-    dm.setup("fit")
-    dataloader = dm.train_dataloader()
-
-    print(dm.default_transforms())
-    mean = torch.tensor(dm.default_transforms().transforms[1].mean)
-    std = torch.tensor(dm.default_transforms().transforms[1].std)
-    unnormalize = transforms.Normalize((-mean / std).tolist(), (1.0 / std).tolist())
-
-    X, _ = next(iter(dataloader))
-    model.eval()
-    X_hat = model(X)
-
-    fig, axes = plt.subplots(2, 10, figsize=(10, 2))
-    for i in range(10):
-        ax_real = axes[0][i]
-        ax_real.imshow(np.transpose(unnormalize(X[i]), (1, 2, 0)))
-        ax_real.get_xaxis().set_visible(False)
-        ax_real.get_yaxis().set_visible(False)
-
-        ax_gen = axes[1][i]
-        ax_gen.imshow(np.transpose(unnormalize(X_hat[i]).detach().numpy(), (1, 2, 0)))
-        ax_gen.get_xaxis().set_visible(False)
-        ax_gen.get_yaxis().set_visible(False)
-
-    plt.show()
+    batches = [x_batch, a_batch]
+    is_heatmap = [False, True]
+    plot_batches(batches, is_heatmap, n=n)
