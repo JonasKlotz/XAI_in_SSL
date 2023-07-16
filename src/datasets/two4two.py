@@ -59,7 +59,7 @@ class Two4TwoDataset(torch.utils.data.Dataset):
 
         label_data = pd.read_json(self.parameters_file, lines=True)
         label_data['label'] = label_data['obj_name'].apply(
-            lambda x: 0 if x == 'sticky' else 1)
+            lambda x: 0 if x == 'stretchy' else 1)
 
         return label_data
 
@@ -82,7 +82,7 @@ class Two4TwoDataModule(L.LightningDataModule):
         else:
             self.transform = transforms.Compose([transforms.ToTensor(),
                                                  transforms.Normalize((0.1307,), (0.3081,)),
-                                                 transforms.Resize(resize)
+                                                 transforms.Resize(resize, antialias=True)
                                                  ])
         if mask_transform:
             self.mask_transform = mask_transform
@@ -113,7 +113,8 @@ class Two4TwoDataModule(L.LightningDataModule):
         if stage == "fit":
             self.two2two_train = Two4TwoDataset(self.data_dir, mode='train', transform=self.transform)
             self.two2two_val = Two4TwoDataset(self.data_dir, mode='validation', transform=self.transform)
-
+        if stage == "validation":
+            self.two2two_val = Two4TwoDataset(self.data_dir, mode='validation', transform=self.transform)
         # Assign test dataset for use in dataloader(s)
         if stage == "test":
             self.two2two_test = Two4TwoDataset(self.data_dir, mode='test', transform=self.transform)

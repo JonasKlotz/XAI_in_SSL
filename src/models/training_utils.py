@@ -136,9 +136,8 @@ num_embeddings = 128  # 512
 commitment_cost = 0.25
 decay = 0.99
 learning_rate = 1e-3
-model = VQVAE(num_hiddens, num_residual_layers, num_residual_hiddens,
-                  num_embeddings, embedding_dim,
-                  commitment_cost, decay, input_channels=1)
+
+
 
 def train_with_datamodule(working_path, datamodule, model, max_epochs=50, model_name='vqvae'):
     """ Trains a VQ-VAE given dataloader.
@@ -172,8 +171,6 @@ def train_with_datamodule(working_path, datamodule, model, max_epochs=50, model_
     return model, result
 
 
-
-
 if __name__ == '__main__':
     from datasets.two4two import Two4TwoDataModule
 
@@ -188,12 +185,12 @@ if __name__ == '__main__':
     model = VQVAE(num_hiddens, num_residual_layers, num_residual_hiddens,
                   num_embeddings, embedding_dim,
                   commitment_cost, decay, input_channels=1)
-    #model = load_vqvae()
-    #model = load_simclr()
-    #model = load_swav()
-    layer_name= '_pre_vq_conv'
+    # model = load_vqvae()
+    # model = load_simclr()
+    # model = load_swav()
+    layer_name = '_pre_vq_conv'
     layer = getattr(model, layer_name)
     print(layer)
 
-    #train_with_datamodule(working_path=working_path, datamodule=datamodule, model=model, max_epochs=1)
-    #print(model)
+    # train_with_datamodule(working_path=working_path, datamodule=datamodule, model=model, max_epochs=1)
+    # print(model)

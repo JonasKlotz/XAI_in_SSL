@@ -15,6 +15,7 @@ from sklearn.preprocessing import normalize
 from lightly.data import LightlyDataset
 from lightly.transforms import SimCLRTransform, utils
 
+from datasets.two4two import Two4TwoDataModule
 
 num_workers = 8
 batch_size = 256
@@ -24,6 +25,7 @@ input_size = 128
 num_ftrs = 32
 
 pl.seed_everything(seed)
+
 
 class SimCLRModel(pl.LightningModule):
     def __init__(self):
@@ -68,19 +70,19 @@ class SimCLRModel(pl.LightningModule):
         return [optim], [scheduler]
 
 
-transform = SimCLRTransform(
-    input_size=input_size, vf_prob=0.5, rr_prob=0.5, cj_prob=0.0, random_gray_scale=0.0
-)
 
-# We create a torchvision transformation for embedding the dataset after
-# training
-test_transform = torchvision.transforms.Compose(
-    [
-        torchvision.transforms.Resize((input_size, input_size)),
-        torchvision.transforms.ToTensor(),
-        torchvision.transforms.Normalize(
-            mean=utils.IMAGENET_NORMALIZE["mean"],
-            std=utils.IMAGENET_NORMALIZE["std"],
-        ),
-    ]
-)
+
+if __name__ == '__main__':
+    transform = SimCLRTransform(
+        input_size=input_size, vf_prob=0.5, rr_prob=0.5, cj_prob=0.0, random_gray_scale=0.0
+    )
+
+    data_module = Two4TwoDataModule(batch_size=batch_size,
+                                    transform=transform)
+    from models.bolts import setup_model
+
+    path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/models/two4two/full_model3.pth"
+    model, encoder, layers,_ = setup_model('simclr_pretrained', model_path=path)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    trainer = pl.Trainer(max_epochs=max_epochs, devices=1, accelerator=device)
+    trainer.fit(model, data_module)

@@ -1,3 +1,5 @@
+from itertools import product
+
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,6 +9,7 @@ from skimage import feature, transform
 import torch.nn.functional as F
 from torchvision.transforms import transforms
 
+from general_utils import read_batches, setup_paths
 from models.bolts import setup_model
 
 
@@ -329,6 +332,13 @@ def make_img_plotable(img):
 
 
 def convert_batches_to_img_list(batches, n):
+    """ by the first dimension (batch size)
+
+
+    :param batches:
+    :param n:
+    :return:
+    """
     images = []
     for img_index in range(n):
         image_tuple = []
@@ -379,14 +389,47 @@ def plot_batches(batches, is_heatmap, n=5, main_title="Images and Masks", titles
 
 
 if __name__ == '__main__':
-    batch_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/gradcam/cifar10/simclr/batches"
+    method_name = "gradcam"
+    model_names = ["resnet18", "vae", "simclr"]
+    dataset_names = ["two4two"]  # ["cifar10"]["two4two"]
 
-    # read a batch and x batch in numpy
-    a_batch = np.load(batch_path + "/a_batch.npy")
-    x_batch = np.load(batch_path + "/x_batch.npy")
+    # convert batches to images
+    fontsize = 14
+    matplotlib.rcParams['image.cmap'] = 'bwr'
+    n=2
+    figsize = (3 * len(model_names), 3)
+    # create subplots
+    fig, axarr = plt.subplots(nrows=n, ncols=len(model_names) + 1, figsize=figsize)
+    # flatten axarr
+    axarr = axarr.flatten()
+    titles = ["Image", "ResNet18", "VAE", "SimCLR"]
+    images = []
+    for i in range (n):
+        first_image=True
+        for model_name, dataset_name in product(model_names, dataset_names):
+            work_path, database_path, plot_path, batches_path = setup_paths(method_name, model_name, dataset_name)
+            a_batch, x_batch, s_batch, y_batch = read_batches(batches_path, limit=n)
+            if first_image:
+                images.append(make_img_plotable(x_batch[i]))
+                first_image = False
+            images.append(make_img_plotable(a_batch[i]))
 
-    n = 2  # number of images from batch to be visualized
+    # plot images
+    for outer in range(n):
+        for inner in range(len(model_names)+ 1):
+            index = outer * (len(model_names) + 1) + inner
 
-    batches = [x_batch, a_batch]
-    is_heatmap = [False, True]
-    plot_batches(batches, is_heatmap, n=n)
+            hm = axarr[index ].imshow(images[index])
+            axarr[index].axis('off')
+            axarr[index ].set_title(titles[inner], fontsize=fontsize)
+
+    # add space for colour bar at the bottom
+    plt.subplots_adjust(bottom=0.1*2)
+
+
+    cbar_ax = fig.add_axes([0.325, 0.1, 0.58, 0.06])
+    cbar = fig.colorbar(hm, cax=cbar_ax, orientation="horizontal", )
+
+    plt.suptitle("GradCAM", fontsize=18, y=0.95)
+    plt.show()
+

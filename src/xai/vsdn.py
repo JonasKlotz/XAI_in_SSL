@@ -1,3 +1,9 @@
+import sys
+
+# Adds the directory to your python path.
+sys.path.append("/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/src")
+
+import gc
 import os
 from typing import List
 
@@ -11,10 +17,13 @@ from matplotlib import pyplot as plt
 from torchvision.transforms import transforms
 import skimage.transform as skt
 import zarr
+from tqdm import tqdm
 
 from datasets.datautils import sample_from_data_module, extract_data_loader, embed_imgs, setup_datamodule
 from models.bolts import setup_model
 from sklearn.metrics.pairwise import cosine_similarity
+from general_utils import save_batches, parse_batch
+from visualization.plotting import plot_batches
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -192,7 +201,8 @@ def explain_image(query_img, ds_embeddings, ds_imgs, encoder, layers, device, pl
     # embed query img
     with torch.no_grad():
         query_embeddings = encoder(query_img.to(device))
-    if isinstance(query_embeddings, list):
+
+    if isinstance(query_embeddings, list) or isinstance(query_embeddings, tuple):
         query_embeddings = query_embeddings[0]
     query_embeddings = query_embeddings.cpu().numpy()
 
@@ -231,10 +241,15 @@ def post_process_img(img_tensor):
 def load_zarr_embeddings(database_path, names=None):
     if names == None:
         names = ['embeddings', 'images']
-    return [zarr.open(os.path.join(database_path, name + '.zarr')) for name in names]
+    results = [zarr.open(os.path.join(database_path, name + '.zarr')) for name in names]
+    for i in range(len(results)):
+        assert results[i] is not None, f'Could not load {names[i]} from {database_path}'
+    return results
 
 
 def explain_batch(x_batch, encoder, layers, database_path, save_path=None, device=None, plot=False):
+    encoder.eval()
+
     dims = x_batch.shape[-2:]
     a_batch = np.zeros(shape=(len(x_batch), dims[0], dims[1]))
     embeddings_database, images_database, = load_zarr_embeddings(database_path)
@@ -248,9 +263,6 @@ def explain_batch(x_batch, encoder, layers, database_path, save_path=None, devic
         heatmap = skt.resize(heatmap, dims)
         a_batch[i] = heatmap
 
-    if save_path:
-        # save a_batch
-        np.save(save_path + '/batches/' + 'a_batch.npy', a_batch)
     return a_batch
 
 
@@ -262,29 +274,64 @@ def generate_databases(encoder, datamodule_name, database_path, device=None, num
     return ds_imgs, ds_embeddings
 
 
+def create_vsdn_databases(dataset_names, model_names, base_path, n=10000, device=None):
+    """
+    Creates databases for all models and datasets
+    :param dataset_names:
+    :param model_names:
+    :param base_path:
+    :param n:
+    :param device:
+    :return:
+    """
+    for dataset_name in dataset_names:
+        data_module, _ = setup_datamodule(dataset_name=dataset_name, batch_size=1)
+        data_loader = extract_data_loader(data_module)
+
+        for model_name in model_names:
+            work_path = os.path.join(base_path, dataset_name, model_name)
+            database_path = os.path.join(work_path, "database")
+            # load model
+            _, encoder, _, _ = setup_model(name=model_name)
+            embed_imgs(encoder, data_loader, database_path, device=device, num_batches=n)
+
+            # clear memory
+            gc.collect()
+
+
+def explain_all_batches(dataset_names, model_names, base_path, device=None):
+    """  Explain all batches of all models and datasets
+    """
+    for dataset_name in dataset_names:
+        for model_name in model_names:
+            work_path = os.path.join(base_path, dataset_name, model_name)
+            database_path = os.path.join(work_path, "database")
+            plot_path = os.path.join(work_path, "plots")
+            os.makedirs(plot_path, exist_ok=True)
+
+            # load model
+            model, encoder, layers, _ = setup_model(name=model_name)
+
+            data_module, _ = setup_datamodule(dataset_name=dataset_name, batch_size=64)
+            data_loader = extract_data_loader(data_module, stage='test')
+
+            for i, batch in tqdm(enumerate(data_loader), total=len(data_loader), desc="Encoding images", leave=False):
+                s_batch, x_batch = parse_batch(batch, dataset_name)
+                a_batch = explain_batch(x_batch=x_batch, encoder=encoder, layers=layers, database_path=database_path,
+                                        save_path=work_path, device=device, plot=False)
+                save_batches(work_path, x_batch=x_batch, a_batch=a_batch, s_batch=s_batch, iteration=i)
+                plot_batches([x_batch, a_batch], is_heatmap=[False, True], n=5,
+                             main_title=f"VDSN: {model_name} for {dataset_name}",
+                             plot=False, save_path=plot_path + f"/{i}.png")
+            print(f"Finished {model_name} on {dataset_name}")
+
+
 if __name__ == '__main__':
     base_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/vsdn"
-    model_name = "simclr"  # "simclr" "vae" "swav"
-    dataset_name = "two4two"  # "two4two"#"cifar10"
-    work_path = os.path.join(base_path, dataset_name, model_name)
-    database_path = os.path.join(work_path, "database")
-    plot_path = os.path.join(work_path, "plots")
+    model_names = ["swav"]#, "simclr_pretrained", ]  # DONE ["simclr", "vae", "resnet18"]
+    dataset_names = ["two4two"]  # DONE ["cifar10", "two4two"]
+    n = 10000
 
+    # create_vsdn_databases(dataset_names, model_names, base_path, n=n)
 
-    # load model
-    model, encoder, layers = setup_model(name=model_name)
-    # data_module = setup_datamodule(dataset_name=datamodule_name, batch_size=1)
-    #
-    # data_loader = extract_data_loader(data_module)
-    # ds_imgs, ds_embeddings = embed_imgs(encoder, data_loader, database_path, device=device, num_batches=10000)
-
-    data_module, _ = setup_datamodule(dataset_name=dataset_name, batch_size=4)
-    x_batch, s_batch, labels = sample_from_data_module(data_module, stage='test')
-    a_batch = explain_batch(x_batch=x_batch, encoder=encoder, layers=layers, database_path=database_path,
-                            save_path=work_path, device=device, plot=True)
-
-    # Metrics
-    # #metric = TopKIntersection(k=1000, return_aggregate=True)
-    #
-    # #batch_eval = metric(x_batch=x_batch, s_batch=s_batch, a_batch=a_batch)
-    # #print(batch_eval)
+    explain_all_batches(dataset_names, model_names, base_path)

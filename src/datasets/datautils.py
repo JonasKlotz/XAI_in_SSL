@@ -48,6 +48,10 @@ def extract_data_loader(data_module, stage="fit"):
         data_loader = data_module.test_dataloader()
     elif stage == "predict":
         data_loader = data_module.predict_dataloader()
+    elif stage == "validation":
+        data_loader = data_module.val_dataloader()
+    else:
+        raise ValueError("Stage not recognized")
     return data_loader
 
 
@@ -94,7 +98,7 @@ def embed_imgs(encoder, data_loader, database_path, num_batches=100, device=None
         with torch.no_grad():
             embeddings: torch.Tensor = encoder(imgs)
 
-        if isinstance(embeddings, list):
+        if isinstance(embeddings, list) or isinstance(embeddings, tuple):
             embeddings = embeddings[0]
 
         embeddings = embeddings.detach().numpy()
@@ -115,7 +119,7 @@ def embed_imgs(encoder, data_loader, database_path, num_batches=100, device=None
     return (images_zarr, embeddings_zarr)
 
 
-def setup_datamodule(dataset_name=None, batch_size=1, model_name=""):
+def setup_datamodule(dataset_name=None, batch_size=1, model_name="", transformations=None):
 
     if dataset_name == 'two4two':
         if model_name == 'vae':

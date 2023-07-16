@@ -1,11 +1,16 @@
 import sys
 
 import warnings
+from itertools import product
+
+from PIL import Image
+from tqdm import tqdm
+
 warnings.filterwarnings("ignore")
 
 # Adds the other directory to your python path.
 sys.path.append("/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/src")
-from general_utils import setup_paths
+from general_utils import setup_paths, save_batches, parse_batch, read_batches
 
 import os
 from os import path
@@ -13,15 +18,14 @@ from typing import Optional
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from skimage.transform import resize
 
-from visualization.plotting import plot_heatmap_and_img, visualize_reconstructions, plot_batches
+from visualization.plotting import plot_batches
 
-from datasets.datautils import extract_data_loader, setup_datamodule, load_img_to_batch
+from datasets.datautils import extract_data_loader, setup_datamodule
 from models.bolts import setup_model
-from xai.embedded_gradcam.database import read_database, build_database, build_all_databases
-from xai.embedded_gradcam.gradcam import generate_activations, GradCAM
+from xai.embedded_gradcam.database import read_database
+from xai.embedded_gradcam.gradcam import generate_activations
 from xai.embedded_gradcam.helpers import _plot_grad_heatmap
 
 # gradients = None
@@ -64,6 +68,10 @@ def explain_image(image_tensor, model, encoder, layer, embeddings_db, gradients_
     if image_tensor.ndim == 3:
         image_tensor = image_tensor.unsqueeze(0)
 
+    model.eval()
+    encoder.eval()
+
+    # generate embeddings from image
     embeddings = encoder(image_tensor)
     if isinstance(embeddings, list):
         embeddings = embeddings[0]
@@ -111,8 +119,6 @@ def explain_batch(
         embeddings_db: np.ndarray,
         gradients_db: np.ndarray,
         x_batch: np.ndarray,
-        save: bool = False,
-        save_path: str = None,
         plot: bool = False,
         k: int = 1):
     """ Generates heatmaps for a batch of images
@@ -152,105 +158,47 @@ def explain_batch(
                                 gradients_db=gradients_db, k=k, plot=plot)
         heatmaps[i] = heatmap
 
-    if save:
-        # save heatmaps as numpy array
-        np.save(path.join(save_path, "a_batch.npy"), heatmaps)
     return heatmaps
 
 
-def save_batches(work_path, x_batch=None, s_batch=None, y_batch=None, a_batch=None):
-    """Saves the batches to the work path"""
-    if not path.exists(path.join(work_path, 'batches')):
-        os.makedirs(path.join(work_path, 'batches'))
-    if a_batch is not None:
-        np.save(path.join(work_path, 'batches', "a_batch.npy"), a_batch)
-    if x_batch is not None:
-        np.save(path.join(work_path, 'batches', "x_batch.npy"), x_batch)
-    if s_batch is not None:
-        np.save(path.join(work_path, 'batches', "s_batch.npy"), s_batch)
-    if y_batch is not None:
-        np.save(path.join(work_path, 'batches', "y_batch.npy"), y_batch)
-    print("Saved batches to", path.join(work_path, 'batches'))
-
-
-def load_batches(work_path):
-    try:
-        a_batch = np.load(path.join(work_path, 'batches', "a_batch.npy"))
-    except FileNotFoundError:
-        a_batch = None
-    try:
-        x_batch = np.load(path.join(work_path, 'batches', "x_batch.npy"))
-    except FileNotFoundError:
-        x_batch = None
-    try:
-        s_batch = np.load(path.join(work_path, 'batches', "s_batch.npy"))
-    except FileNotFoundError:
-        s_batch = None
-    try:
-        y_batch = np.load(path.join(work_path, 'batches', "y_batch.npy"))
-    except FileNotFoundError:
-        y_batch = None
-    return a_batch, x_batch, s_batch, y_batch
-
 def generate_batches(dataset_names, model_names):
+    """Generates batches of images from the test set and generates heatmaps for them"""
     for dataset_name in dataset_names:
         # load batch of 64 images from test set
-        data_module, reverse_transform = setup_datamodule(dataset_name, batch_size=8)
+        data_module, reverse_transform = setup_datamodule(dataset_name, batch_size=16)
         data_loader = extract_data_loader(data_module, "test")
-        batch = next(iter(data_loader))
-        x_batch = batch[0]
-        if dataset_name == "two4two":
-            s_batch = batch[1]
-        else:
-            s_batch = None
+        i = 0
+        for batch in tqdm(data_loader, desc="Encoding images", leave=False):
 
-        for model_name in model_names:
-            work_path, database_path, plot_path, batches_path = setup_paths(method_name, model_name, dataset_name)
-            # load model
-            model, encoder, layers = setup_model(model_name)
-            layer = layers[0]
+            s_batch, x_batch = parse_batch(batch, dataset_name)
 
-            embeddings_db, gradients_db = read_database(database_path)
-            print(embeddings_db.shape, gradients_db.shape)
+            for model_name in model_names:
+                work_path, database_path, plot_path, batches_path = setup_paths(method_name, model_name, dataset_name)
+                # load model
+                model, encoder, layers, transformations = setup_model(model_name)
+                layer = layers[0]
 
-            # visualize_reconstructions(model, x_batch, save_path=plot_path, reverse_transform=reverse_transform)
+                embeddings_db, gradients_db = read_database(database_path)
 
-            # get heatmaps for batch
-            a_batch = explain_batch(model, encoder, layer, embeddings_db, gradients_db, x_batch,
-                                    save_path=work_path, plot=False, k=15)
+                # visualize_reconstructions(model, x_batch, save_path=plot_path, reverse_transform=reverse_transform)
 
-            plot_batches([x_batch, a_batch], is_heatmap=[False, True], n=5,
-                         main_title=f"{model_name} for {dataset_name}",
-                         plot=True)
-            #
-            # save all batches
-            save_batches(work_path=work_path, x_batch=x_batch, a_batch=a_batch, s_batch=s_batch)
+                # get heatmaps for batch
+                a_batch = explain_batch(model, encoder, layer, embeddings_db, gradients_db, x_batch,
+                                        save_path=work_path, plot=False, k=15)
 
+                plot_batches([x_batch, a_batch], is_heatmap=[False, True], n=5,
+                             main_title=f"{model_name} for {dataset_name}",
+                             plot=False, save_path=plot_path + f"/{i}.png")
+                #
+                # save all batches
+                save_batches(work_path=work_path, x_batch=x_batch, a_batch=a_batch, s_batch=s_batch, iteration=i)
+            i += 1
 
 
 if __name__ == '__main__':
     method_name = "gradcam"
-    model_names = ["simclr", "vae"]
-    dataset_names = ["cifar10", "two4two"]
+    model_names = ["resnet18", "vae", "simclr"]
+    dataset_names = ["two4two"]  # ["cifar10"]["two4two"]
+
 
     generate_batches(dataset_names, model_names)
-
-    ###################################################################################################################
-    # metric = TopKIntersection(k=500 , return_aggregate=True)
-    #
-    # # # convert all to numpy
-    # # img = x_batch[0].detach().cpu().numpy()
-    # # label = y_batch[0].detach().cpu().numpy()
-    # # mask = s_batch[0].detach().cpu().numpy()
-    # # heatmap = a_batch[0]
-    # # eval = metric.evaluate_instance(model, img, label, heatmap, mask)
-    # # title = f"TopKIntersection: {eval}"
-    # # plot_img_mask_heatmap(x_batch[0], s_batch[0], a_batch[0], title=title)
-    #
-    #
-    #
-    # # batch_eval = metric(x_batch=x_batch, s_batch=s_batch, a_batch=a_batch)
-    # # title = f"TopKIntersection: {batch_eval}"
-    # # plot_img_mask_heatmap(x_batch[0], s_batch[0], a_batch[0], title=title)
-    # # print(batch_eval)
-    # print("done")
