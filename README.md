@@ -12,6 +12,9 @@ This repository contains the code and experiments written for our university pro
 
 - `/src/xai/embedded_gradcam/`: All the code for the GradCAM attribution method can be found in this folder.
 
+- - `/src/xai/vdsn`: All the code for the VDSN attribution method can be found here.
+
+
 - `/src/datasets/`: Some utility functions for loading the dataset
 
 - `/src/visualization/`: Some utility functions used for some of the visualizations
