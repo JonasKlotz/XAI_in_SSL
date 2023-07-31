@@ -28,6 +28,15 @@ class RELAX(nn.Module):
         importance(): Return the estimated feature importance scores.
         uncertainty(): Return the estimated uncertainty scores.
         mask_generator(num_cells=7, p=0.5, nsd=2): Generator function to generate masks for importance estimation.
+
+     Example:
+        # Example usage to estimate feature importance using RELAX
+        encoder_model = MyEncoder()  # replace MyEncoder with your own Torch encoder model
+	with torch.no_grad():
+	    relax = RELAX(x, model, num_batches=100, mask_bs=30) # replace x with input to encoder_model to explain
+            relax.forward()
+        plt.imshow(relax.importance())  # display the feature importance scores
+        plt.imshow(relax.uncertainty())  # display the uncertainty scores
     """
     def __init__(self, x, f, num_batches, batch_size):
         super().__init__()
