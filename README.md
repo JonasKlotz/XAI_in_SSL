@@ -22,6 +22,8 @@ This repository contains the code and experiments written for our university pro
 
 Each method's code and experiments are organized into separate directories for clarity and ease of use. To reproduce the experiments or utilize the XAI methods for your own purposes, you can navigate to the respective directories mentioned above and follow the instructions provided in the code files and iPython notebooks.
 
+The Two4Two dataset used is unfortunately too large to upload to this repository, hence it needs to be downloaded separately locally. It can be downloaded [here](https://f002.backblazeb2.com/file/iclr2022/two4two_obj_color_and_spherical_finer_search_spherical_uniform_0.33_uniform_0.15.tar).
+
 ## Contributions
 
 The code in this repository was developed as part of our "Data Science Project" course. The authors of this project are Denis Semko, Mert Akil and Jonas Klotz.
