@@ -7,10 +7,13 @@ from torchvision import transforms
 
 
 class MNISTDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir: str = "./"):
+    def __init__(self, data_dir: str = "./", resize:int = None):
         super().__init__()
         self.data_dir = data_dir
-        self.transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+        normal_transforms = [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+        if resize:
+            normal_transforms += [transforms.Resize(resize)]
+        self.transform = transforms.Compose(normal_transforms)
 
     def prepare_data(self):
         # download

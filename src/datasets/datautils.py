@@ -4,8 +4,13 @@ import os.path
 
 import torch
 from PIL import Image
+from lightly.transforms import SimCLRTransform
 from torchvision import transforms
 from tqdm import tqdm
+import zarr
+
+from datasets.cifar10 import load_cifar10_data_module
+from datasets.two4two import Two4TwoDataModule
 
 
 def extract(tar_file, path):
@@ -15,7 +20,7 @@ def extract(tar_file, path):
         path: the path to extract the tar file to
     """
 
-    if not os.path.isfile(tar_file) :
+    if not os.path.isfile(tar_file):
         print("The not a file")
         return
 
@@ -43,6 +48,10 @@ def extract_data_loader(data_module, stage="fit"):
         data_loader = data_module.test_dataloader()
     elif stage == "predict":
         data_loader = data_module.predict_dataloader()
+    elif stage == "validation":
+        data_loader = data_module.val_dataloader()
+    else:
+        raise ValueError("Stage not recognized")
     return data_loader
 
 
@@ -56,7 +65,7 @@ def load_img_to_batch(img_path):
     return img_tensor
 
 
-def sample_from_data_module(data_module, stage="fit"):
+def sample_from_data_module(data_module: object, stage: object = "fit") -> object:
     """Samples a batch from the data module
     Args:
         data_module: the data module
@@ -69,9 +78,14 @@ def sample_from_data_module(data_module, stage="fit"):
     return batch
 
 
-def embed_imgs(encoder, data_loader, num_batches=100, device = None):
+def embed_imgs(encoder, data_loader, database_path, num_batches=100, device=None, ):
     # Encode all images in the data_loader using model, and return both images and encodings
-    img_list, embed_list = [], []
+    embeddings_zarr_path = os.path.join(database_path, "embeddings.zarr")
+    images_zarr_path = os.path.join(database_path, "images.zarr")
+
+    embeddings_zarr = None
+    images_zarr = None
+
     encoder.eval()
     if device:
         encoder.to(device)
@@ -82,10 +96,46 @@ def embed_imgs(encoder, data_loader, num_batches=100, device = None):
             imgs = imgs.to(device)
 
         with torch.no_grad():
-            embeddings = encoder(imgs)
-        img_list.append(imgs)
-        embed_list.append(embeddings)
+            embeddings: torch.Tensor = encoder(imgs)
+
+        if isinstance(embeddings, list) or isinstance(embeddings, tuple):
+            embeddings = embeddings[0]
+
+        embeddings = embeddings.detach().numpy()
+        imgs = imgs.detach().numpy()
+
+        if embeddings_zarr is None and images_zarr is None:
+            embeddings_zarr = zarr.open_array(embeddings_zarr_path, mode='w', shape=embeddings.shape)
+            embeddings_zarr.append(embeddings, axis=0)
+            images_zarr = zarr.open_array(images_zarr_path, mode='w', shape=imgs.shape)
+            images_zarr.append(imgs, axis=0)
+        else:
+            embeddings_zarr.append(embeddings, axis=0)
+            images_zarr.append(imgs, axis=0)
+
         i += 1
         if num_batches and i == num_batches:
             break
-    return (torch.cat(img_list, dim=0), torch.cat(embed_list, dim=0))
+    return (images_zarr, embeddings_zarr)
+
+
+def setup_datamodule(dataset_name=None, batch_size=1, model_name="", transformations=None):
+
+    if dataset_name == 'two4two':
+        if model_name == 'vae':
+            resize = 32
+            data_module = Two4TwoDataModule(batch_size=batch_size, resize=resize)
+        elif model_name=='simclr_pretrained':
+            transform = SimCLRTransform(
+                input_size=128, vf_prob=0.5, rr_prob=0.5, cj_prob=0.0, random_gray_scale=0.0
+            )
+            data_module = Two4TwoDataModule(batch_size=batch_size, transform=transform)
+        else:
+            data_module = Two4TwoDataModule(batch_size=batch_size)
+
+        return data_module, None
+    elif dataset_name == 'cifar10':
+        data_module, reverse_transformation = load_cifar10_data_module(batch_size=batch_size)
+        return data_module, reverse_transformation
+    else:
+        raise NotImplementedError(f"Dataset {dataset_name} not implemented")

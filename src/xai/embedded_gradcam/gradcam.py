@@ -5,6 +5,7 @@ from PIL import Image
 from torchvision import transforms
 import torch
 import torch.nn.functional as F
+import torch.multiprocessing as mp
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -13,6 +14,7 @@ else:
 
 gradients = None
 activations = None
+
 
 
 def backward_hook(module, grad_input, grad_output):
@@ -33,8 +35,21 @@ def forward_hook(module, args, output):
     # print(f'Activations size: {activations.size()}')
 
 
-def GradCAM(model,encoder, layer, img_batch, plot=True, img_path=None):  # NOSONAR
+def GradCAM(model, encoder, layer, img_batch, labels=None, plot=True, img_path=None, model_type: str = None):  # NOSONAR
+    """
+    Generates a heatmap for the given image tensor
+    Args:
+        img_batch: the image tensor shape (b, c, h, w)
+        model: the model
+        layer: the layer to generate the heatmap from
+        img_batch: the image tensor
+        labels: the labels
+        img_path: the path to the image
+        plot: whether to plot the heatmap
+        model_type: the model type, vae, simclr or swav
+    Returns:
 
+    """
     if img_path is not None:
         image = Image.open(img_path).convert('RGB')
         transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
@@ -42,7 +57,8 @@ def GradCAM(model,encoder, layer, img_batch, plot=True, img_path=None):  # NOSON
     else:
         img_tensor = img_batch
 
-    heatmap, pooled_gradients, embeddings = _generate_gradcam_heatmap(img_tensor, model, encoder, layer=layer)
+    heatmap, pooled_gradients, embeddings = _generate_gradcam_heatmap(img_tensor, model, encoder, layer=layer,
+                                                                      model_type=model_type, labels=labels)
 
     if plot:
         _plot_grad_heatmap(heatmap)
@@ -51,9 +67,15 @@ def GradCAM(model,encoder, layer, img_batch, plot=True, img_path=None):  # NOSON
     return pooled_gradients, embeddings
 
 
-def _generate_gradcam_heatmap(img_tensor: torch.Tensor, model: torch.nn.Module,encoder: torch.nn.Module, layer: torch.nn.Module):
+def _generate_gradcam_heatmap(img_tensor: torch.Tensor, model: torch.nn.Module, encoder: torch.nn.Module,
+                              layer: torch.nn.Module, model_type: str = 'vae', labels=None):
     img_tensor = img_tensor.to(device)
     embeddings = encoder(img_tensor)
+    # todo here could be a bug now as list/tensor behaviour was changed, maybe check if shape[0] !=1
+    if isinstance(embeddings, torch.Tensor) and embeddings.shape[0] != 1:
+        embeddings = embeddings[0].unsqueeze(0)
+    if isinstance(embeddings, list):
+        embeddings = embeddings[0][0].unsqueeze(0)
     # defines two global scope variables to store our gradients and activations
     global activations
     global gradients
@@ -61,9 +83,8 @@ def _generate_gradcam_heatmap(img_tensor: torch.Tensor, model: torch.nn.Module,e
     # register forward hook and backward hook at the layer of interest
     f_hook = layer.register_forward_hook(forward_hook)
     b_hook = layer.register_full_backward_hook(backward_hook)
-    batch_tuple = (img_tensor, None) # tuplerize as models expect that input is a tuple
-    outputs = model.step(batch_tuple, batch_idx=0)  # idx doenst matter
-    loss = outputs[0]  # todo: check if this is correct
+
+    loss = get_outputs_loss(img_tensor, model, model_type, labels=labels)
     loss.backward()
 
     # pool the gradients across the channels
@@ -88,14 +109,51 @@ def _generate_gradcam_heatmap(img_tensor: torch.Tensor, model: torch.nn.Module,e
     return heatmap, pooled_gradients, embeddings
 
 
+def get_outputs_loss(img_tensor, model, model_type, labels=None):
+    """ Returns the loss of the model for the given input tensor """
+    if model_type == 'vae':
+        batch_tuple = (img_tensor, None)  # tuplerize as models expect that input is a tuple
+        outputs = model.step(batch_tuple, batch_idx=0)  # idx doenst matter
+        return outputs[0]
+    elif model_type == 'simclr':
+        batch_tuple = ((img_tensor[0].unsqueeze(0), img_tensor[1].unsqueeze(0), None), None)  # simclr format
+        outputs = model.shared_step(batch_tuple)  # idx doenst matter
+    elif model_type == 'swav':
+
+        world_size = 2
+        mp.spawn(swav,
+                 args=(world_size,),
+                 nprocs=world_size,
+                 join=True)
+
+    elif model_type == 'simclr_pretrained':
+            batch_tuple = ((img_tensor[0].unsqueeze(0), img_tensor[1].unsqueeze(0)), None, None)  # simclr format
+            outputs = model.shared_step(batch_tuple)
+    elif model_type == 'resnet18':
+        batch_tuple = (img_tensor, labels)
+        outputs,_,_ = model.shared_step(batch_tuple)
+    else:
+        raise ValueError(f'Unknown model type {model_type}')
+    return outputs
+
+def swav(model, img_tensor):
+    from models.bolts import setup, cleanup
+
+    setup(2,2)
+    batch_tuple = (img_tensor, None)  # tuplerize as models expect that input is a tuple
+    outputs = model.shared_step(batch_tuple)
+    cleanup()
+    return outputs
+
 def generate_activations(model, layer, img_tensor):
+    """ Generates the activations for the given image tensor"""
     # defines two global scope variables to store our gradients and activations
     global activations
 
     # register forward hook and backward hook at the layer of interest
     f_hook = layer.register_forward_hook(forward_hook)
 
-    loss = model(img_tensor.to(device))  # [0].backward()
+    result = model(img_tensor.to(device))  # NOSONAR: necessary to get the activations
     tmp_activations = activations.detach().clone()
     activations = None
     f_hook.remove()

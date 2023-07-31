@@ -1,35 +1,76 @@
-import numpy as np
-import plotly.express as px
 import torch
 import matplotlib.pyplot as plt
 
+def _plot_grad_heatmap_and_img(heatmap, img_tensor, title="Image mask and heatmap", titles=None,
+                               save_path=None):
+    if isinstance(img_tensor, torch.Tensor):
+        img_tensor -= img_tensor.min()
+        img_tensor /= img_tensor.max()
+        img = img_tensor.squeeze(0).permute(1, 2, 0).detach().numpy()
 
-def _plot_grad_heatmap_and_img(heatmap, img_tensor):
-    heatmap = heatmap.detach().numpy()
-    img = img_tensor.squeeze(0).permute(1, 2, 0).detach().numpy()
-    # normalize the tensor
-    img = img - np.min(img)
-    img = img / np.max(img)
-    fig = px.imshow(img)
-    fig.show()
-    #
-    # # normalize the heatmap
-    # heatmap = heatmap - np.min(heatmap)
-    # heatmap = heatmap / np.max(heatmap)
-    #
-    #
-    # # todo make work
-    # from plotly.subplots import make_subplots
-    # import plotly.graph_objects as go
-    # fig = make_subplots(rows=1, cols=2,
-    #                     horizontal_spacing=0.01,
-    #                     shared_yaxes=True)
-    #
-    # fig.add_trace(go.Image(z=img), row=1, col=1)
-    # fig.add_trace(go.Image(z=heatmap), row=1, col=2)
-    # fig.show()
+    f, axarr = plt.subplots(1, 2, figsize=(16, 8), dpi=200)
+    axarr[0].imshow(img)
+    axarr[0].axis('off')
+    axarr[0].set_title("Image", fontsize=24)
 
-def _plot_grad_heatmap(heatmap, title=""):
+
+    hm = axarr[1].imshow(heatmap)
+    axarr[1].set_title("Heatmap", fontsize=24)
+    axarr[1].axis('off')
+
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    divider = make_axes_locatable(axarr[1])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+
+    # Create colorbar
+    cbarlabel = "Importance"
+    cbar = axarr[1].figure.colorbar(hm, ax=axarr[1], cax=cax)
+    cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom", fontsize=20)
+
+    plt.suptitle(title, fontsize=34, y=0.95)
+
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300)
+        return
+    plt.show()
+
+
+def _plot_grad_heatmap_and_img(heatmap, img_tensor, title="Image with Heatmap", save=False, save_path=None):
+    if isinstance(img_tensor, torch.Tensor):
+        img_tensor -= img_tensor.min()
+        img_tensor /= img_tensor.max()
+        img = img_tensor.squeeze(0).permute(1, 2, 0).detach().numpy()
+
+    f, axarr = plt.subplots(1, 2, figsize=(16, 8), dpi=200)
+    axarr[0].imshow(img)
+    axarr[0].axis('off')
+    axarr[0].set_title("Image", fontsize=24)
+
+    hm = axarr[1].imshow(heatmap)
+    axarr[1].set_title("Heatmap", fontsize=24)
+    axarr[1].axis('off')
+
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    divider = make_axes_locatable(axarr[1])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+
+    # Create colorbar
+    cbarlabel = "Importance"
+    cbar = axarr[1].figure.colorbar(hm, ax=axarr[1], cax=cax)
+    cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom", fontsize=20)
+
+    plt.suptitle(title, fontsize=34, y=0.95)
+
+    if save and save_path is not None:
+        plt.savefig(save_path, dpi=300)
+        return
+    plt.show()
+
+
+def _plot_grad_heatmap(heatmap, image_tensor=None, mask=None, title="", titles=None, save_path=None):
+    if image_tensor is not None:
+        _plot_grad_heatmap_and_img(heatmap, image_tensor, title=title, save_path=save_path)
+        return
     fig, ax = plt.subplots()
     # Plot the heatmap
     im = ax.imshow(heatmap)
@@ -38,4 +79,7 @@ def _plot_grad_heatmap(heatmap, title=""):
     cbar = ax.figure.colorbar(im, ax=ax)
     cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")
     ax.set_title(title)
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300)
+        return
     plt.show()
