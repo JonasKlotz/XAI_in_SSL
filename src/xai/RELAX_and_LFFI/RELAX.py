@@ -4,7 +4,6 @@ import torch.nn.functional as F
 
 class RELAX(nn.Module):
     """
-    RELAX: RunnEstimate Learning via Adaptive eXploration
     A PyTorch implementation of the RELAX algorithm for importance and uncertainty estimation.
 
     Parameters:
