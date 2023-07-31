@@ -61,7 +61,8 @@ def parse_batch(batch, dataset_name):
         s_batch = batch[1]
     else:
         s_batch = None
-    return s_batch, x_batch
+    y_batch = batch[-1]
+    return s_batch, x_batch, y_batch
 
 
 def read_batches(batches_path, convert_to_numpy=True, limit: int = None):

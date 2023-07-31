@@ -110,8 +110,7 @@ def build_all_databases(base_path, model_names, dataset_names, end=5000):
         for model_name in model_names:
             database_path = path.join(base_path, dataset_name, model_name, "database")
             batch_size = 1 if (model_name == "vae" or model_name == "resnet18") else 2
-            num_classes = 10 if dataset_name == "cifar10" else 2
-            model, encoder, layers, transformations = setup_model(model_name, num_classes=num_classes)
+            model, encoder, layers, transformations = setup_model(model_name,dataset_name=dataset_name)
             layer = layers[0]
 
             ###################################################################################################################
@@ -137,6 +136,6 @@ def build_all_databases(base_path, model_names, dataset_names, end=5000):
 if __name__ == "__main__":
     base_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/gradcam"
     # model_names = ["resnet18", "vae", "simclr", "simclr_pretrained", "svaw"]
-    model_names = ["simclr", ]  # ["vae",]
+    model_names = ["swav", ]  # ["vae",]
     dataset_names = ["two4two"]# ["cifar10"]["two4two"]
-    build_all_databases(base_path, model_names, dataset_names, end=5000)
+    build_all_databases(base_path, model_names, dataset_names, end=500)

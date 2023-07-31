@@ -4,6 +4,7 @@ import warnings
 from itertools import product
 
 from PIL import Image
+from torchvision.transforms import transforms
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
@@ -161,7 +162,7 @@ def explain_batch(
     return heatmaps
 
 
-def generate_batches(dataset_names, model_names):
+def generate_batches(dataset_names, model_names, end=100):
     """Generates batches of images from the test set and generates heatmaps for them"""
     for dataset_name in dataset_names:
         # load batch of 64 images from test set
@@ -170,35 +171,90 @@ def generate_batches(dataset_names, model_names):
         i = 0
         for batch in tqdm(data_loader, desc="Encoding images", leave=False):
 
-            s_batch, x_batch = parse_batch(batch, dataset_name)
+            s_batch, x_batch, y_batch = parse_batch(batch, dataset_name)
 
             for model_name in model_names:
                 work_path, database_path, plot_path, batches_path = setup_paths(method_name, model_name, dataset_name)
                 # load model
-                model, encoder, layers, transformations = setup_model(model_name)
+                model, encoder, layers, transformations = setup_model(model_name, dataset_name)
                 layer = layers[0]
 
+                _, predictions, _ = model.shared_step((x_batch,y_batch))
                 embeddings_db, gradients_db = read_database(database_path)
 
                 # visualize_reconstructions(model, x_batch, save_path=plot_path, reverse_transform=reverse_transform)
 
                 # get heatmaps for batch
                 a_batch = explain_batch(model, encoder, layer, embeddings_db, gradients_db, x_batch,
-                                        save_path=work_path, plot=False, k=15)
+                                         plot=False, k=15)
+                predictions = torch.argmax(predictions, dim=1)
+                labels = y_batch
+                print(predictions)
+                titles = []
+                for index in range(len(predictions)):
+                    x = predictions[index]
+                    title = "Predicted: "
+                    title += "Peeky" if x == 0 else "Stretchy"
+                    titles.append(title)
 
-                plot_batches([x_batch, a_batch], is_heatmap=[False, True], n=5,
+                    title = "True: "
+                    x = labels[index]
+                    title += "Peeky" if x == 0 else "Stretchy"
+                    titles.append(title)
+                print(titles)
+                n=10
+                plot_batches([x_batch, a_batch], is_heatmap=[False, True], n=n,
                              main_title=f"{model_name} for {dataset_name}",
-                             plot=False, save_path=plot_path + f"/{i}.png")
+                             titles = titles[:(2*n)],
+                             plot=True, save_path=plot_path + f"/{i}.png")
                 #
                 # save all batches
-                save_batches(work_path=work_path, x_batch=x_batch, a_batch=a_batch, s_batch=s_batch, iteration=i)
+                #save_batches(work_path=work_path, x_batch=x_batch, a_batch=a_batch, s_batch=s_batch, iteration=i)
+            i += 1
+            break
+
+
+def generate_batches_for_input(dataset_names, model_names, image_path):
+    """Generates batches of images from the test set and generates heatmaps for them"""
+    original_image = Image.open(image_path).convert('RGB')
+    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+    x_batch = transform(original_image).unsqueeze(0)
+    path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
+    for dataset_name in dataset_names:
+        # load batch of 64 images from test set
+        i = 0
+        for model_name in model_names:
+            work_path, database_path, plot_path, _ = setup_paths(method_name, model_name, dataset_name)
+            # load model
+            model, encoder, layers, transformations = setup_model(model_name, dataset_name)
+            layer = layers[0]
+
+            embeddings_db, gradients_db = read_database(database_path)
+
+            # visualize_reconstructions(model, x_batch, save_path=plot_path, reverse_transform=reverse_transform)
+
+            # get heatmaps for batch
+            a_batch = explain_batch(model, encoder, layer, embeddings_db, gradients_db, x_batch,
+                                    plot=True, k=15)
+            #get predictions
+            pred = model.shared_step()
+            #
+            # save all batches
+            save_batches(work_path=path, x_batch=x_batch, a_batch=a_batch, iteration=i)
             i += 1
 
 
 if __name__ == '__main__':
     method_name = "gradcam"
-    model_names = ["resnet18", "vae", "simclr"]
+    model_names = ["resnet18"]  #
     dataset_names = ["two4two"]  # ["cifar10"]["two4two"]
-
-
+    #
     generate_batches(dataset_names, model_names)
+
+    # base = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two/test/"
+    # image_path =base + "0a02e7b2-965d-49b2-ba13-93a084b34f3d.png"
+    # image_path = base + "0a26d443-8ad8-40d6-8f8a-02f2da394ee6.png"
+    #generate_batches_for_input(dataset_names, model_names, image_path)
+    # path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/batches"
+    # a_batch, x_batch, s_batch, y_batch =    read_batches(path)
+    # np.save(path+"/vdsn.npy", a_batch)

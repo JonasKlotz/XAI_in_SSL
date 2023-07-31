@@ -5,6 +5,7 @@ from PIL import Image
 from torchvision import transforms
 import torch
 import torch.nn.functional as F
+import torch.multiprocessing as mp
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -13,6 +14,7 @@ else:
 
 gradients = None
 activations = None
+
 
 
 def backward_hook(module, grad_input, grad_output):
@@ -117,11 +119,16 @@ def get_outputs_loss(img_tensor, model, model_type, labels=None):
         batch_tuple = ((img_tensor[0].unsqueeze(0), img_tensor[1].unsqueeze(0), None), None)  # simclr format
         outputs = model.shared_step(batch_tuple)  # idx doenst matter
     elif model_type == 'swav':
-        batch_tuple = (img_tensor, None)  # tuplerize as models expect that input is a tuple
-        outputs = model.shared_step(batch_tuple)  # idx doenst matter
+
+        world_size = 2
+        mp.spawn(swav,
+                 args=(world_size,),
+                 nprocs=world_size,
+                 join=True)
+
     elif model_type == 'simclr_pretrained':
-        batch_tuple = ((img_tensor[0].unsqueeze(0), img_tensor[1].unsqueeze(0)), None, None)  # simclr format
-        outputs = model.shared_step(batch_tuple)
+            batch_tuple = ((img_tensor[0].unsqueeze(0), img_tensor[1].unsqueeze(0)), None, None)  # simclr format
+            outputs = model.shared_step(batch_tuple)
     elif model_type == 'resnet18':
         batch_tuple = (img_tensor, labels)
         outputs,_,_ = model.shared_step(batch_tuple)
@@ -129,6 +136,14 @@ def get_outputs_loss(img_tensor, model, model_type, labels=None):
         raise ValueError(f'Unknown model type {model_type}')
     return outputs
 
+def swav(model, img_tensor):
+    from models.bolts import setup, cleanup
+
+    setup(2,2)
+    batch_tuple = (img_tensor, None)  # tuplerize as models expect that input is a tuple
+    outputs = model.shared_step(batch_tuple)
+    cleanup()
+    return outputs
 
 def generate_activations(model, layer, img_tensor):
     """ Generates the activations for the given image tensor"""
@@ -138,7 +153,7 @@ def generate_activations(model, layer, img_tensor):
     # register forward hook and backward hook at the layer of interest
     f_hook = layer.register_forward_hook(forward_hook)
 
-    _ = model(img_tensor.to(device))  # NOSONAR: necessary to get the activations
+    result = model(img_tensor.to(device))  # NOSONAR: necessary to get the activations
     tmp_activations = activations.detach().clone()
     activations = None
     f_hook.remove()

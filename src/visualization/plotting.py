@@ -350,10 +350,9 @@ def convert_batches_to_img_list(batches, n):
     return images
 
 
-def plot_batches(batches, is_heatmap, n=5, main_title="Images and Masks", titles=None, plot = True, save_path = None):
+def plot_batches(batches, is_heatmap, n=5, main_title="Images and Masks", titles=None, plot=True, save_path=None):
     if titles is None:
-        titles = ["Image" if not is_heatmap[i] else "Heatmap" for i in range(len(is_heatmap))]
-    # convert batches to images
+        titles = ["Image"] *n + ["Heatmap"] *n
     images = convert_batches_to_img_list(batches, n)
     fontsize = 14
     matplotlib.rcParams['image.cmap'] = 'bwr'
@@ -361,12 +360,14 @@ def plot_batches(batches, is_heatmap, n=5, main_title="Images and Masks", titles
     # create subplots
     fig, axarr = plt.subplots(nrows=len(batches), ncols=n, figsize=figsize)
     # plot images
+    i = 0
     for outer_index, img_tuple in enumerate(images):
         for inner_index, img in enumerate(img_tuple):
+
             hm = axarr[inner_index, outer_index].imshow(img)
             axarr[inner_index, outer_index].axis('off')
-            axarr[inner_index, outer_index].set_title(titles[inner_index], fontsize=fontsize)
-
+            axarr[inner_index, outer_index].set_title(titles[i], fontsize=fontsize)
+            i += 1
             if is_heatmap[inner_index]:
                 # Create colorbar
                 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -396,7 +397,7 @@ if __name__ == '__main__':
     # convert batches to images
     fontsize = 14
     matplotlib.rcParams['image.cmap'] = 'bwr'
-    n=2
+    n = 2
     figsize = (3 * len(model_names), 3)
     # create subplots
     fig, axarr = plt.subplots(nrows=n, ncols=len(model_names) + 1, figsize=figsize)
@@ -404,8 +405,8 @@ if __name__ == '__main__':
     axarr = axarr.flatten()
     titles = ["Image", "ResNet18", "VAE", "SimCLR"]
     images = []
-    for i in range (n):
-        first_image=True
+    for i in range(n):
+        first_image = True
         for model_name, dataset_name in product(model_names, dataset_names):
             work_path, database_path, plot_path, batches_path = setup_paths(method_name, model_name, dataset_name)
             a_batch, x_batch, s_batch, y_batch = read_batches(batches_path, limit=n)
@@ -416,20 +417,18 @@ if __name__ == '__main__':
 
     # plot images
     for outer in range(n):
-        for inner in range(len(model_names)+ 1):
+        for inner in range(len(model_names) + 1):
             index = outer * (len(model_names) + 1) + inner
 
-            hm = axarr[index ].imshow(images[index])
+            hm = axarr[index].imshow(images[index])
             axarr[index].axis('off')
-            axarr[index ].set_title(titles[inner], fontsize=fontsize)
+            axarr[index].set_title(titles[inner], fontsize=fontsize)
 
     # add space for colour bar at the bottom
-    plt.subplots_adjust(bottom=0.1*2)
-
+    plt.subplots_adjust(bottom=0.1 * 2)
 
     cbar_ax = fig.add_axes([0.325, 0.1, 0.58, 0.06])
     cbar = fig.colorbar(hm, cax=cbar_ax, orientation="horizontal", )
 
     plt.suptitle("GradCAM", fontsize=18, y=0.95)
     plt.show()
-

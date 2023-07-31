@@ -292,16 +292,18 @@ def create_vsdn_databases(dataset_names, model_names, base_path, n=10000, device
             work_path = os.path.join(base_path, dataset_name, model_name)
             database_path = os.path.join(work_path, "database")
             # load model
-            _, encoder, _, _ = setup_model(name=model_name)
+            _, encoder, _, _ = setup_model(model_name=model_name, dataset_name=dataset_name)
             embed_imgs(encoder, data_loader, database_path, device=device, num_batches=n)
 
             # clear memory
             gc.collect()
 
 
-def explain_all_batches(dataset_names, model_names, base_path, device=None):
+def explain_all_batches(dataset_names, model_names, base_path, device=None, end:int= None):
     """  Explain all batches of all models and datasets
     """
+    batch_size = 32
+
     for dataset_name in dataset_names:
         for model_name in model_names:
             work_path = os.path.join(base_path, dataset_name, model_name)
@@ -310,9 +312,8 @@ def explain_all_batches(dataset_names, model_names, base_path, device=None):
             os.makedirs(plot_path, exist_ok=True)
 
             # load model
-            model, encoder, layers, _ = setup_model(name=model_name)
-
-            data_module, _ = setup_datamodule(dataset_name=dataset_name, batch_size=64)
+            model, encoder, layers, _ = setup_model(model_name=model_name, dataset_name=dataset_name)
+            data_module, _ = setup_datamodule(dataset_name=dataset_name, batch_size=batch_size)
             data_loader = extract_data_loader(data_module, stage='test')
 
             for i, batch in tqdm(enumerate(data_loader), total=len(data_loader), desc="Encoding images", leave=False):
@@ -320,18 +321,55 @@ def explain_all_batches(dataset_names, model_names, base_path, device=None):
                 a_batch = explain_batch(x_batch=x_batch, encoder=encoder, layers=layers, database_path=database_path,
                                         save_path=work_path, device=device, plot=False)
                 save_batches(work_path, x_batch=x_batch, a_batch=a_batch, s_batch=s_batch, iteration=i)
-                plot_batches([x_batch, a_batch], is_heatmap=[False, True], n=5,
-                             main_title=f"VDSN: {model_name} for {dataset_name}",
-                             plot=False, save_path=plot_path + f"/{i}.png")
+                # plot_batches([x_batch, a_batch], is_heatmap=[False, True], n=5,
+                #              main_title=f"VDSN: {model_name} for {dataset_name}",
+                #              plot=False, save_path=plot_path + f"/{i}.png")
+
+                if end is not None and i*batch_size > end:
+                    break
             print(f"Finished {model_name} on {dataset_name}")
+
+
+def explain_input_image(dataset_names, model_names, base_path, image_path, device=None):
+    """  Explain all batches of all models and datasets
+    """
+    original_image = Image.open(image_path).convert('RGB')
+    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+    x_batch = transform(original_image).unsqueeze(0)
+    path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
+
+    for dataset_name in dataset_names:
+        i = 0
+        for model_name in model_names:
+            work_path = os.path.join(base_path, dataset_name, model_name)
+            database_path = os.path.join(work_path, "database")
+            plot_path = os.path.join(work_path, "plots")
+            os.makedirs(plot_path, exist_ok=True)
+
+            # load model
+            model, encoder, layers, _ = setup_model(model_name=model_name,dataset_name=dataset_name)
+            a_batch = explain_batch(x_batch=x_batch, encoder=encoder, layers=layers, database_path=database_path,
+                                    save_path=work_path, device=device, plot=False)
+
+            save_batches(path, x_batch=x_batch, a_batch=a_batch, s_batch=None, iteration=i)
+            plot_batches([x_batch, a_batch], is_heatmap=[False, True], n=1,
+                         main_title=f"VDSN: {model_name} for {dataset_name}",
+                         plot=True, save_path=plot_path + f"/{i}.png")
+
+            print(f"Finished {model_name} on {dataset_name}")
+            i += 1
 
 
 if __name__ == '__main__':
     base_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/vsdn"
-    model_names = ["swav"]#, "simclr_pretrained", ]  # DONE ["simclr", "vae", "resnet18"]
+    # model_names = ["resnet18", "vae", "swav", "simclr",
+    #                "simclr_pretrained"]  # , "simclr_pretrained", ]  # DONE ["simclr", "vae", "resnet18"]
+    missing_model_names = ["swav", "simclr_pretrained"]
     dataset_names = ["two4two"]  # DONE ["cifar10", "two4two"]
     n = 10000
+    # image_path ="/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/data/two4two/test/0a02e7b2-965d-49b2-ba13-93a084b34f3d.png"
 
     # create_vsdn_databases(dataset_names, model_names, base_path, n=n)
+    # explain_input_image(dataset_names, model_names, base_path, image_path, device=None)
 
-    explain_all_batches(dataset_names, model_names, base_path)
+    explain_all_batches(dataset_names, missing_model_names, base_path,end = 5000)

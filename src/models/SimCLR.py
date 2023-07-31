@@ -82,7 +82,7 @@ if __name__ == '__main__':
     from models.bolts import setup_model
 
     path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results/models/two4two/full_model3.pth"
-    model, encoder, layers,_ = setup_model('simclr_pretrained', model_path=path)
+    model, encoder, layers,_ = setup_model('simclr_pretrained',dataset_name="two4two", model_path=path)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     trainer = pl.Trainer(max_epochs=max_epochs, devices=1, accelerator=device)
     trainer.fit(model, data_module)

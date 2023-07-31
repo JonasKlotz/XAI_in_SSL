@@ -22,8 +22,8 @@ def convert_segmentation_map_to_binary(s_batch):
 
 if __name__ == '__main__':
     base_path = "/home/jonasklotz/Studys/23SOSE/XAI_in_SSL/results"
-    method_name = ["vsdn", "gradcam"]
-    model_names = ["simclr", "vae", "resnet18"]
+    method_name = ["vsdn"]
+    model_names = ["swav", "simclr_pretrained"]# ["simclr", "vae", "resnet18"]
     dataset_names =  ["two4two"]
 
     metric_names = ["top_k_intersection", "pointing_game", "relevance_rank_accuracy"]
