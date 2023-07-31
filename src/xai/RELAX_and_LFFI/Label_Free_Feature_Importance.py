@@ -23,6 +23,15 @@ class AuxiliaryModule(Module):
     Note:
         The black_box must be a PyTorch Module that takes base_features as input and returns predictions.
         The input_features passed to the forward() method are the features whose importance is to be estimated.
+
+    Example:
+        # Example usage to estimate feature importance using LFFI
+        encoder_model = MyEncoder()  # Replace MyEncoder with your own Torch encoder model
+        data_loader = torch.utils.data.DataLoader(...)  # Replace ... with your data loading scheme
+        attribution_method = captum.attr.GradientShap(encoder_model)  # Choose any attribution method
+        baseline = torch.zeros(1, input_size)  # Replace input_size with the appropriate size (c, w, h)
+        importance_scores = lffi(encoder_model, data_loader, 'cuda', attribution_method, baseline)
+        plt.imshow(np.abs(importance_scores[0].flatten())  # Display the feature importance scores for 1st image
     """
     def __init__(self, black_box, base_features):
 	super().__init__()
