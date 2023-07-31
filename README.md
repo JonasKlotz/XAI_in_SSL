@@ -4,13 +4,19 @@ This repository contains the code and experiments written for our university pro
 
 ## Table of Contents
 
-- `/sec/xai/`: This directory contains the code written for the different identified XAI methods in our report and their corresponding experiments.
+- `/src/xai/`: This directory contains the code written for the different identified XAI methods in our report and their corresponding experiments.
 
-- `/sec/xai/RELAX_and_LFFI/`: In this folder, you can find the implementations of the RELAX method and Label-Free Feature Importance (LFFI). The docstrings within the code provide a short example of how to use these methods. Additionally, there is the export of a iPython notebook (from Google Colab, with a link to run the notebook in Colab) where the quantitative and qualitative experiments were conducted.
+- `/src/xai/RELAX_and_LFFI/`: In this folder, you can find the implementations of the RELAX method and Label-Free Feature Importance (LFFI). The docstrings within the code provide a short example of how to use these methods. Additionally, there is the export of a iPython notebook (from Google Colab, with a link to run the notebook in Colab) where the quantitative and qualitative experiments were conducted.
 
-- `/sec/xai/cocoa/`: This directory includes the code written for the COCOA method. There is also an iPython notebook specifically dedicated to experiments related to COCOA.
+- `/src/xai/cocoa/`: This directory includes the code written for the COCOA method. There is also an iPython notebook specifically dedicated to experiments related to COCOA.
 
-- `/sec/xai/embedded_gradcam/`: All the code for the GradCAM attribution method can be found in this folder.
+- `/src/xai/embedded_gradcam/`: All the code for the GradCAM attribution method can be found in this folder.
+
+- `/src/datasets/`: Some utility functions for loading the dataset
+
+- `/src/visualization/`: Some utility functions used for some of the visualizations
+
+- `/src/models/`: Some utility functions used for models. Most notably, the iPython notebook (exported from Kaggle) used to train our custom SimCLR model.
 
 ## How to Use
 
